@@ -52,6 +52,11 @@ const (
 	vmGitSyncFinalizer   = "virt.mathianasj.github.com/vm-finalizer"
 	// PauseArgoAnnotation is the annotation key to pause Argo reconciliation
 	PauseArgoAnnotation = "virt-git-sync/pause-argo"
+	// PauseTimestampAnnotation tracks when the pause annotation was added
+	PauseTimestampAnnotation = "virt-git-sync/pause-timestamp"
+	// MinimumPauseDuration is the minimum time to keep the pause annotation (30 seconds)
+	// This gives ArgoCD time to process the ignoreDifferences update
+	MinimumPauseDuration = 30 * time.Second
 )
 
 // VirtGitSyncReconciler reconciles a VirtGitSync object
@@ -146,9 +151,17 @@ func (r *VirtGitSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Reconcile ArgoCD Application if enabled
+	// Note: automated sync is always disabled - we manually trigger syncs after git push
 	if r.isArgoCDEnabled(virtGitSync) {
 		if err := r.reconcileArgoCDApplication(ctx, virtGitSync); err != nil {
 			return r.handleArgoCDError(ctx, virtGitSync, err)
+		}
+
+		// Trigger ArgoCD sync, but only if git working tree is clean
+		// This ensures we don't sync while there are still uncommitted/unpushed changes
+		if err := r.triggerArgoCDSyncIfClean(ctx, virtGitSync, gitManager); err != nil {
+			logger.Error(err, "Failed to trigger ArgoCD sync")
+			// Continue anyway - not critical
 		}
 	}
 
@@ -158,7 +171,9 @@ func (r *VirtGitSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	return ctrl.Result{}, nil
+	// Requeue after 5 minutes to periodically trigger ArgoCD sync
+	// This catches any changes made directly to git outside of our controller
+	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }
 
 // updateStatus updates the VirtGitSync status
@@ -376,10 +391,94 @@ func (r *VirtGitSyncReconciler) syncAllVMsToGit(ctx context.Context, vgs *virtv1
 		}
 		logger.Info("Pushed VM changes to git", "files", len(changedFiles))
 
+		// NOTE: ArgoCD sync will be triggered in the main reconcile loop
+		// after checking that git is clean (no uncommitted changes)
+
 		// NOTE: We do NOT clear the deletion cache here. The cache persists so that if ArgoCD
 		// recreates the VM (before it processes the deletion from git), we will continue to skip
 		// it. The cache is only cleared when we detect a genuine "create" event for a new VM.
 	}
+
+	return nil
+}
+
+// autoUnpauseSyncedVMs removes pause annotations from VMs after git sync
+// This allows ArgoCD to resume reconciliation now that git matches the cluster
+func (r *VirtGitSyncReconciler) autoUnpauseSyncedVMs(ctx context.Context, vgs *virtv1alpha1.VirtGitSync, vms *[]kubevirtv1.VirtualMachine) error {
+	logger := log.FromContext(ctx)
+
+	pausedVMCount := 0
+	unpausedVMs := 0
+
+	for i := range *vms {
+		vm := &(*vms)[i]
+
+		// Skip if VM doesn't have pause annotation
+		if !isVMPaused(vm) {
+			continue
+		}
+
+		pausedVMCount++
+
+		// Skip if VM is being deleted
+		if vm.DeletionTimestamp != nil {
+			continue
+		}
+
+		// Fetch latest version of VM to avoid conflicts
+		vmKey := types.NamespacedName{
+			Name:      vm.Name,
+			Namespace: vm.Namespace,
+		}
+		latestVM := &kubevirtv1.VirtualMachine{}
+		if err := r.Get(ctx, vmKey, latestVM); err != nil {
+			logger.Error(err, "Failed to fetch latest VM for unpause", "vm", vm.Name, "namespace", vm.Namespace)
+			continue
+		}
+
+		// Check again if pause annotation still exists (might have been removed already)
+		if !isVMPaused(latestVM) {
+			continue
+		}
+
+		// Check if minimum pause duration has elapsed
+		if latestVM.Annotations != nil {
+			if pauseTimeStr, ok := latestVM.Annotations[PauseTimestampAnnotation]; ok {
+				pauseTime, err := time.Parse(time.RFC3339, pauseTimeStr)
+				if err != nil {
+					logger.Error(err, "Failed to parse pause timestamp, will remove anyway", "vm", latestVM.Name, "timestamp", pauseTimeStr)
+				} else {
+					elapsed := time.Since(pauseTime)
+					if elapsed < MinimumPauseDuration {
+						// Not enough time has passed, keep the pause annotation
+						logger.V(1).Info("Pause annotation too recent, keeping it",
+							"vm", latestVM.Name,
+							"elapsed", elapsed.Seconds(),
+							"minimum", MinimumPauseDuration.Seconds())
+						continue
+					}
+				}
+			}
+		}
+
+		// Remove pause annotation and timestamp from latest version
+		if latestVM.Annotations != nil {
+			delete(latestVM.Annotations, PauseArgoAnnotation)
+			delete(latestVM.Annotations, PauseTimestampAnnotation)
+
+			if err := r.Update(ctx, latestVM); err != nil {
+				logger.Error(err, "Failed to auto-remove pause annotation", "vm", latestVM.Name, "namespace", latestVM.Namespace)
+				// Continue with other VMs even if one fails
+				continue
+			}
+
+			unpausedVMs++
+			logger.Info("Auto-removed pause annotation (git sync complete)", "vm", latestVM.Name, "namespace", latestVM.Namespace)
+		}
+	}
+
+	// Note: We don't re-enable ArgoCD automated sync here
+	// The handlePausedVMsSync function (called in the main reconcile loop) will handle that
 
 	return nil
 }
@@ -481,6 +580,61 @@ func (r *VirtGitSyncReconciler) findPausedVMs(ctx context.Context, vgs *virtv1al
 	}
 
 	return pausedVMs, nil
+}
+
+// handlePausedVMsSync checks for paused VMs and disables/enables ArgoCD automated sync accordingly
+// This function must be called AFTER reconcileArgoCDApplication to override the sync policy
+// triggerArgoCDSyncIfClean triggers an ArgoCD sync operation, but only if git is clean
+// This prevents syncing while there are uncommitted/unpushed changes that could cause drift
+func (r *VirtGitSyncReconciler) triggerArgoCDSyncIfClean(ctx context.Context, vgs *virtv1alpha1.VirtGitSync, gitManager *gitmgr.Manager) error {
+	logger := log.FromContext(ctx)
+
+	// Check if git working tree is clean (no uncommitted changes)
+	hasChanges, err := gitManager.HasUncommittedChanges()
+	if err != nil {
+		return fmt.Errorf("failed to check git status: %w", err)
+	}
+
+	if hasChanges {
+		logger.V(1).Info("Skipping ArgoCD sync - git has uncommitted changes")
+		return nil
+	}
+
+	// Git is clean, safe to trigger ArgoCD sync
+	argoManager := argocdmgr.NewManager(r.Client)
+	if err := argoManager.TriggerSync(ctx, vgs); err != nil {
+		return fmt.Errorf("failed to trigger sync: %w", err)
+	}
+
+	return nil
+}
+
+func (r *VirtGitSyncReconciler) handlePausedVMsSync(ctx context.Context, vgs *virtv1alpha1.VirtGitSync) error {
+	logger := log.FromContext(ctx)
+
+	// Find all paused VMs
+	pausedVMs, err := r.findPausedVMs(ctx, vgs)
+	if err != nil {
+		return fmt.Errorf("failed to find paused VMs: %w", err)
+	}
+
+	argoManager := argocdmgr.NewManager(r.Client)
+
+	if len(pausedVMs) > 0 {
+		// There are paused VMs - ensure automated sync is disabled
+		logger.V(1).Info("Paused VMs detected, ensuring automated sync is disabled", "count", len(pausedVMs))
+		if err := argoManager.DisableAutomatedSync(ctx, vgs); err != nil {
+			return fmt.Errorf("failed to disable automated sync: %w", err)
+		}
+	} else {
+		// No paused VMs - ensure automated sync is enabled (if configured in VirtGitSync spec)
+		logger.V(1).Info("No paused VMs, ensuring automated sync is enabled per VirtGitSync spec")
+		if err := argoManager.EnableAutomatedSync(ctx, vgs); err != nil {
+			return fmt.Errorf("failed to enable automated sync: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // handleGitError handles git operation errors
@@ -741,12 +895,32 @@ func (h *VirtualMachineEventHandler) Update(ctx context.Context, e event.UpdateE
 		"newGeneration", newVM.Generation,
 	)
 
+	// Note: We no longer need auto-pause logic
+	// ArgoCD automated sync is disabled, and we manually trigger syncs after git push
+	// This eliminates race conditions between manual changes and ArgoCD syncs
+
 	// Log specific changes
 	if changes["spec.running"] != nil {
 		logger.Info("VirtualMachine running state changed",
 			"name", newVM.Name,
 			"old", oldVM.Spec.Running,
 			"new", newVM.Spec.Running,
+		)
+	}
+
+	if changes["spec.runStrategy"] != nil {
+		oldStrategy := "nil"
+		newStrategy := "nil"
+		if oldVM.Spec.RunStrategy != nil {
+			oldStrategy = string(*oldVM.Spec.RunStrategy)
+		}
+		if newVM.Spec.RunStrategy != nil {
+			newStrategy = string(*newVM.Spec.RunStrategy)
+		}
+		logger.Info("VirtualMachine runStrategy changed",
+			"name", newVM.Name,
+			"old", oldStrategy,
+			"new", newStrategy,
 		)
 	}
 
@@ -803,15 +977,92 @@ func (h *VirtualMachineEventHandler) Generic(ctx context.Context, e event.Generi
 	h.enqueueVirtGitSyncs(ctx, vm, q, "generic", nil)
 }
 
+// shouldAutoPause determines if we should automatically add the pause annotation
+// Returns true if this is a manual change (not from ArgoCD)
+//
+// Strategy:
+// 1. Skip if no meaningful changes
+// 2. Skip if ONLY change is to the pause annotation itself (avoid infinite loop)
+// 3. If meaningful change detected → auto-pause (even if already paused, to reset the timer)
+func (h *VirtualMachineEventHandler) shouldAutoPause(oldVM, newVM *kubevirtv1.VirtualMachine, changes map[string]interface{}) bool {
+	// Note: We DO NOT skip if VM is already paused
+	// If there's a new meaningful change, we want to reset the pause timer
+
+	// Skip if no changes at all
+	if len(changes) == 0 {
+		return false
+	}
+
+	// Skip if ONLY resourceVersion changed (no meaningful change)
+	if len(changes) == 1 && changes["metadata.resourceVersion"] != nil {
+		return false
+	}
+
+	// Check if the ONLY annotation change is the pause annotation itself
+	// This prevents infinite loop when user removes pause annotation
+	if changes["metadata.annotations"] != nil && len(changes) <= 2 {
+		// Get old and new pause values
+		oldPause := ""
+		newPause := ""
+		if oldVM.Annotations != nil {
+			oldPause = oldVM.Annotations[PauseArgoAnnotation]
+		}
+		if newVM.Annotations != nil {
+			newPause = newVM.Annotations[PauseArgoAnnotation]
+		}
+
+		// If pause annotation changed and no other meaningful changes, skip
+		if oldPause != newPause {
+			// Check if there are other changes besides resourceVersion and annotations
+			hasOtherChanges := false
+			for k := range changes {
+				if k != "metadata.resourceVersion" && k != "metadata.annotations" {
+					hasOtherChanges = true
+					break
+				}
+			}
+			if !hasOtherChanges {
+				return false // Only pause annotation changed, don't re-add it
+			}
+		}
+	}
+
+	// At this point we know:
+	// 1. VM is not already paused
+	// 2. There are meaningful changes (not just pause annotation)
+	//
+	// Auto-pause to prevent ArgoCD from fighting with this change
+	// The pause annotation tells ArgoCD to temporarily ignore this VM
+	// while our controller syncs the change to git
+	return true
+}
+
 // detectChanges compares old and new VirtualMachine objects and returns a map of changes
+// This is used for logging and determining if auto-pause should trigger
 func (h *VirtualMachineEventHandler) detectChanges(oldVM, newVM *kubevirtv1.VirtualMachine) map[string]interface{} {
 	changes := make(map[string]interface{})
 
-	// Check spec.running
+	// Check spec.running (deprecated but still used)
 	if oldVM.Spec.Running != newVM.Spec.Running {
 		changes["spec.running"] = map[string]interface{}{
 			"old": oldVM.Spec.Running,
 			"new": newVM.Spec.Running,
+		}
+	}
+
+	// Check spec.runStrategy (replaces spec.running)
+	if oldVM.Spec.RunStrategy != nil && newVM.Spec.RunStrategy != nil {
+		if *oldVM.Spec.RunStrategy != *newVM.Spec.RunStrategy {
+			changes["spec.runStrategy"] = map[string]interface{}{
+				"old": *oldVM.Spec.RunStrategy,
+				"new": *newVM.Spec.RunStrategy,
+			}
+		}
+	} else if oldVM.Spec.RunStrategy != newVM.Spec.RunStrategy {
+		// One is nil, other is not
+		changes["spec.runStrategy"] = map[string]interface{}{
+			"old": oldVM.Spec.RunStrategy,
+			"new": newVM.Spec.RunStrategy,
 		}
 	}
 
@@ -831,7 +1082,7 @@ func (h *VirtualMachineEventHandler) detectChanges(oldVM, newVM *kubevirtv1.Virt
 		}
 	}
 
-	// Check generation (indicates spec change)
+	// Check generation (indicates ANY spec change)
 	if oldVM.Generation != newVM.Generation {
 		changes["metadata.generation"] = map[string]interface{}{
 			"old": oldVM.Generation,
@@ -839,7 +1090,7 @@ func (h *VirtualMachineEventHandler) detectChanges(oldVM, newVM *kubevirtv1.Virt
 		}
 	}
 
-	// Check resource version
+	// Check resource version (always changes, but needed to filter out no-op updates)
 	if oldVM.ResourceVersion != newVM.ResourceVersion {
 		changes["metadata.resourceVersion"] = map[string]interface{}{
 			"old": oldVM.ResourceVersion,

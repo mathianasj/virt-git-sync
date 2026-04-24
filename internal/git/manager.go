@@ -340,6 +340,26 @@ func (m *Manager) GetLastCommit() (string, error) {
 	return ref.Hash().String(), nil
 }
 
+// HasUncommittedChanges checks if there are any uncommitted changes in the working tree
+func (m *Manager) HasUncommittedChanges() (bool, error) {
+	if m.repo == nil {
+		return false, fmt.Errorf("repository not initialized, call Clone first")
+	}
+
+	worktree, err := m.repo.Worktree()
+	if err != nil {
+		return false, fmt.Errorf("failed to get worktree: %w", err)
+	}
+
+	status, err := worktree.Status()
+	if err != nil {
+		return false, fmt.Errorf("failed to get status: %w", err)
+	}
+
+	// If status is not clean, there are uncommitted changes
+	return !status.IsClean(), nil
+}
+
 // getBranchReference converts branch name to plumbing reference
 func getBranchReference(branch string) plumbing.ReferenceName {
 	if strings.HasPrefix(branch, "refs/") {

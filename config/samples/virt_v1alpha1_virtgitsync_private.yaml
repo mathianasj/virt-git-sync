@@ -1,0 +1,31 @@
+apiVersion: virt.mathianasj.github.com/v1alpha1
+kind: VirtGitSync
+metadata:
+  labels:
+    app.kubernetes.io/name: virt-git-sync
+    app.kubernetes.io/managed-by: kustomize
+  name: virtgitsync-private
+spec:
+  gitRepository:
+    url: https://github.com/yourusername/private-repo.git
+    branch: main
+    secretRef:
+      name: git-credentials
+  syncPath: vms
+  argocd:
+    namespace: argocd
+    syncPolicy:
+      automated: true
+      selfHeal: true
+      prune: true
+---
+# Example secret for git authentication (HTTPS)
+# Create this secret before applying the VirtGitSync resource
+apiVersion: v1
+kind: Secret
+metadata:
+  name: git-credentials
+type: Opaque
+stringData:
+  username: your-git-username
+  password: your-git-token-or-password

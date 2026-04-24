@@ -1,0 +1,75 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - argoproj.io
+  resources:
+  - applications
+  - repositories
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kubevirt.io
+  resources:
+  - virtualmachines
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kubevirt.io
+  resources:
+  - virtualmachines/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - kubevirt.io
+  resources:
+  - virtualmachines/status
+  verbs:
+  - get
+- apiGroups:
+  - virt.mathianasj.github.com
+  resources:
+  - virtgitsyncs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - virt.mathianasj.github.com
+  resources:
+  - virtgitsyncs/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - virt.mathianasj.github.com
+  resources:
+  - virtgitsyncs/status
+  verbs:
+  - get
+  - patch
+  - update

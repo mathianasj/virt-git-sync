@@ -1,0 +1,27 @@
+# permissions for end users to edit virtgitsyncs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: virt-git-sync
+    app.kubernetes.io/managed-by: kustomize
+  name: virtgitsync-editor-role
+rules:
+- apiGroups:
+  - virt.mathianasj.github.com
+  resources:
+  - virtgitsyncs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - virt.mathianasj.github.com
+  resources:
+  - virtgitsyncs/status
+  verbs:
+  - get

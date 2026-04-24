@@ -1,0 +1,34 @@
+apiVersion: virt.mathianasj.github.com/v1alpha1
+kind: VirtGitSync
+metadata:
+  labels:
+    app.kubernetes.io/name: virt-git-sync
+    app.kubernetes.io/managed-by: kustomize
+  name: virtgitsync-sample
+spec:
+  # Git repository configuration (REQUIRED)
+  gitRepository:
+    url: https://github.com/yourusername/vm-manifests.git
+    branch: main
+    # secretRef is optional for public repos, required for private repos
+    # secretRef:
+    #   name: git-credentials
+
+  # Path within git repo for VM YAMLs (default: "vms")
+  syncPath: vms
+
+  # Optional: filter VMs by labels
+  # vmSelector:
+  #   matchLabels:
+  #     managed-by: virt-git-sync
+
+  # Optional: ArgoCD Application configuration
+  # argocd:
+  #   namespace: argocd
+  #   applicationName: my-vms
+  #   destinationNamespace: default
+  #   project: default
+  #   syncPolicy:
+  #     automated: true
+  #     selfHeal: true
+  #     prune: true

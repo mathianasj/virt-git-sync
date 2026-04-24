@@ -1,0 +1,34 @@
+apiVersion: virt.mathianasj.github.com/v1alpha1
+kind: VirtGitSync
+metadata:
+  labels:
+    app.kubernetes.io/name: virt-git-sync
+    app.kubernetes.io/managed-by: kustomize
+  name: virtgitsync-ssh
+spec:
+  gitRepository:
+    url: git@github.com:yourusername/private-repo.git
+    branch: main
+    secretRef:
+      name: git-ssh-credentials
+  syncPath: vms
+  argocd:
+    namespace: argocd
+    syncPolicy:
+      automated: true
+      selfHeal: true
+      prune: true
+---
+# Example secret for SSH authentication
+# Create this secret before applying the VirtGitSync resource
+# kubectl create secret generic git-ssh-credentials --from-file=ssh-private-key=/path/to/private/key
+apiVersion: v1
+kind: Secret
+metadata:
+  name: git-ssh-credentials
+type: Opaque
+stringData:
+  ssh-private-key: |
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    # Your SSH private key here
+    -----END OPENSSH PRIVATE KEY-----

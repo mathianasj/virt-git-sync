@@ -1,0 +1,64 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.1
+  name: repositories.argoproj.io
+spec:
+  group: argoproj.io
+  names:
+    kind: Repository
+    listKind: RepositoryList
+    plural: repositories
+    singular: repository
+  scope: Namespaced
+  versions:
+  - name: types
+    schema:
+      openAPIV3Schema:
+        description: Repository is the definition of an ArgoCD Repository resource
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: RepositorySpec is the specification of a Repository
+            properties:
+              insecure:
+                description: Insecure controls whether to skip TLS verification
+                type: boolean
+              password:
+                description: Password is the password for authentication
+                type: string
+              sshPrivateKey:
+                description: SSHPrivateKey is the SSH private key for authentication
+                type: string
+              url:
+                description: URL is the repository URL
+                type: string
+              username:
+                description: Username is the username for authentication
+                type: string
+            required:
+            - url
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true

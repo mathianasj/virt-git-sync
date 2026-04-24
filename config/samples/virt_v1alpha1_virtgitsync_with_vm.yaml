@@ -1,0 +1,88 @@
+# Example VirtualMachine that will be synced to git
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: example-vm
+  namespace: default
+  labels:
+    app: example
+    managed-by: virt-git-sync
+spec:
+  running: false
+  template:
+    metadata:
+      labels:
+        app: example-vm
+    spec:
+      domain:
+        devices:
+          disks:
+          - name: containerdisk
+            disk:
+              bus: virtio
+          - name: cloudinitdisk
+            disk:
+              bus: virtio
+        resources:
+          requests:
+            memory: 1024M
+      volumes:
+      - name: containerdisk
+        containerDisk:
+          image: quay.io/kubevirt/fedora-cloud-container-disk-demo:latest
+      - name: cloudinitdisk
+        cloudInitNoCloud:
+          userData: |
+            #cloud-config
+            password: fedora
+            chpasswd: { expire: False }
+            ssh_authorized_keys:
+              - ssh-rsa AAAAB3...
+---
+# VirtGitSync that watches and syncs VMs to git
+apiVersion: virt.mathianasj.github.com/v1alpha1
+kind: VirtGitSync
+metadata:
+  name: vm-config-sync
+  namespace: default
+  labels:
+    app.kubernetes.io/name: virt-git-sync
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  # Only sync VMs with this label
+  vmSelector:
+    matchLabels:
+      managed-by: virt-git-sync
+
+  # Git repository configuration
+  gitRepository:
+    url: https://github.com/yourusername/vm-manifests.git
+    branch: main
+    secretRef:
+      name: git-credentials
+
+  # Path within repo for VM YAMLs (will create: vms/default/example-vm.yaml)
+  syncPath: vms
+
+  # Optional: ArgoCD integration
+  argocd:
+    namespace: argocd
+    applicationName: synced-vms
+    destinationNamespace: default
+    project: default
+    syncPolicy:
+      automated: true
+      selfHeal: true
+      prune: true
+---
+# Example secret for git authentication (HTTPS)
+# Create this secret before applying the VirtGitSync resource
+apiVersion: v1
+kind: Secret
+metadata:
+  name: git-credentials
+  namespace: default
+type: Opaque
+stringData:
+  username: your-git-username
+  password: your-git-token-or-password

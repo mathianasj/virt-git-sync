@@ -1,0 +1,81 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/*
+Dockerfile.cross
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+cover.out
+
+# Go workspace file
+go.work
+
+# Kubernetes Generated files - skip generated files, except for vendored files
+!vendor/**/zz_generated.*
+
+# editor and IDE paraphernalia
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# Secrets and credentials - NEVER commit these
+*.env
+*.env.*
+.env.local
+.env.*.local
+*-credentials.yaml
+*-credentials.yml
+*-secret.yaml
+*-secret.yml
+secret.yaml
+secret.yml
+secrets.yaml
+secrets.yml
+
+# SSH and TLS keys - NEVER commit these
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+id_ecdsa*
+id_dsa*
+known_hosts
+
+# Kubernetes configs with credentials
+kubeconfig
+kubeconfig.*
+*.kubeconfig
+config.yaml
+config.yml
+
+# Git credentials
+.git-credentials
+.netrc
+
+# Cloud provider credentials
+.aws/
+.azure/
+.gcp/
+credentials.json
+
+# Temporary git sync directories (from operator runtime)
+/tmp/virt-git-sync/
+
+# Local testing artifacts
+test-*.yaml
+local-*.yaml
+scratch/
+.scratch/

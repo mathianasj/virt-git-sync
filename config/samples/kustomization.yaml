@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- virt_v1alpha1_virtgitsync.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

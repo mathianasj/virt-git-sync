@@ -1,0 +1,160 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.1
+  name: applications.argoproj.io
+spec:
+  group: argoproj.io
+  names:
+    kind: Application
+    listKind: ApplicationList
+    plural: applications
+    singular: application
+  scope: Namespaced
+  versions:
+  - name: types
+    schema:
+      openAPIV3Schema:
+        description: Application is the definition of an ArgoCD Application resource
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: ApplicationSpec is the specification of an Application
+            properties:
+              destination:
+                description: Destination is the target cluster and namespace to deploy
+                  to
+                properties:
+                  namespace:
+                    description: Namespace is the target namespace
+                    type: string
+                  server:
+                    description: Server is the Kubernetes cluster API URL
+                    type: string
+                type: object
+              ignoreDifferences:
+                description: IgnoreDifferences is a list of resources and fields which
+                  should be ignored during comparison
+                items:
+                  description: ResourceIgnoreDifferences contains resource filter
+                    and list of json paths which should be ignored during comparison
+                  properties:
+                    group:
+                      description: Group is the Kubernetes API group
+                      type: string
+                    jsonPointers:
+                      description: JSONPointers are JSON pointers to fields to ignore
+                        (RFC6902 format)
+                      items:
+                        type: string
+                      type: array
+                    kind:
+                      description: Kind is the Kubernetes resource kind
+                      type: string
+                    name:
+                      description: Name is the resource name (optional, applies to
+                        all if empty)
+                      type: string
+                    namespace:
+                      description: Namespace is the resource namespace (optional)
+                      type: string
+                  required:
+                  - kind
+                  type: object
+                type: array
+              project:
+                description: Project is the ArgoCD project name
+                type: string
+              source:
+                description: Source is the location of the application manifests
+                properties:
+                  directory:
+                    description: Directory holds directory-specific options
+                    properties:
+                      recurse:
+                        description: Recurse enables directory recursion
+                        type: boolean
+                    type: object
+                  path:
+                    description: Path is a directory path within the repository
+                    type: string
+                  repoURL:
+                    description: RepoURL is the repository URL of the application
+                      manifests
+                    type: string
+                  targetRevision:
+                    description: |-
+                      TargetRevision defines the revision of the source to sync the application to
+                      Can be branch, tag, or commit SHA
+                    type: string
+                required:
+                - repoURL
+                type: object
+              syncPolicy:
+                description: SyncPolicy controls when and how a sync will be performed
+                properties:
+                  automated:
+                    description: Automated controls automated sync settings
+                    properties:
+                      prune:
+                        description: Prune specifies whether to delete resources that
+                          are no longer tracked
+                        type: boolean
+                      selfHeal:
+                        description: SelfHeal specifies whether to revert resources
+                          to desired state
+                        type: boolean
+                    type: object
+                type: object
+            required:
+            - destination
+            - project
+            type: object
+          status:
+            description: ApplicationStatus contains status information for an application
+            properties:
+              health:
+                description: Health contains information about the application's current
+                  health status
+                properties:
+                  status:
+                    description: Status is the health status code
+                    type: string
+                type: object
+              sync:
+                description: Sync contains information about the application's current
+                  sync status
+                properties:
+                  revision:
+                    description: Revision is the revision of the last sync
+                    type: string
+                  status:
+                    description: Status is the sync state of the application
+                    type: string
+                type: object
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

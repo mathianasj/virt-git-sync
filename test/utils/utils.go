@@ -22,7 +22,7 @@ import (
 	"os/exec"
 	"strings"
 
-	. "github.com/onsi/ginkgo/v2" //nolint:revive // Dot import is standard for Ginkgo BDD tests
+	. "github.com/onsi/ginkgo/v2" // Dot import is standard for Ginkgo BDD tests
 )
 
 const (

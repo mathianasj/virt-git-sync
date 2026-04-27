@@ -21,8 +21,8 @@ graph TB
         S_Op[virt-git-sync Operator<br/>mode: standby<br/>DORMANT]
         S_NoArgo[ArgoCD Application<br/>DISABLED/DELETED]
         
-        S_Empty -.x|no VMs to watch| S_Op
-        S_Op -.x|not created| S_NoArgo
+        S_Empty -.-|no VMs to watch| S_Op
+        S_Op -.-|not created| S_NoArgo
     end
     
     subgraph "Git Repository (Source of Truth)"
@@ -32,7 +32,7 @@ graph TB
     A_Op -->|push changes| Git
     A_Argo <-->|sync| Git
     
-    S_Op -.x|no operations| Git
+    S_Op -.-|no operations| Git
     
     style A_VMs fill:#90EE90
     style A_Op fill:#326ce5,color:#fff
@@ -49,12 +49,12 @@ graph TB
 sequenceDiagram
     participant ACM as Red Hat ACM
     participant AC as Active Cluster
-    participant AO as Active Operator<br/>(mode: active)
+    participant AO as Active Operator
     participant Git as Git Repository
     participant AA as Active ArgoCD
     participant AV as VMs (Active)
     participant SC as Standby Cluster
-    participant SO as Standby Operator<br/>(mode: standby)
+    participant SO as Standby Operator
     
     Note over ACM: Deploy VirtGitSync to both clusters
     ACM->>AC: VirtGitSync CR (mode: active)
@@ -127,38 +127,30 @@ sequenceDiagram
 ## State Transitions
 
 ```mermaid
-stateDiagram-v2
-    [*] --> Active: Deploy VirtGitSync<br/>(mode: active)
-    [*] --> Standby: Deploy VirtGitSync<br/>(mode: standby)
+stateDiagram
+    [*] --> Active
+    [*] --> Standby
     
-    Active: Active Mode
-    Active: ✅ VMs present
-    Active: ✅ ArgoCD syncing
-    Active: ✅ Operator watching
-    Active: ✅ Pushing to git
+    Active --> Standby: Failover
+    Standby --> Active: Activate
     
-    Standby: Standby Mode  
-    Standby: ❌ NO VMs
-    Standby: ❌ ArgoCD disabled
-    Standby: ❌ Operator dormant
-    Standby: ✅ Ready to activate
-    
-    Active --> Standby: Failover to other cluster<br/>or planned maintenance
-    Standby --> Active: Disaster recovery<br/>or failback
-    
-    Active --> [*]: Delete VirtGitSync
-    Standby --> [*]: Delete VirtGitSync
+    Active --> [*]
+    Standby --> [*]
     
     note right of Active
-        Primary site
-        Managing VMs
-        Source of git commits
+        Active Mode:
+        - VMs present
+        - ArgoCD syncing
+        - Operator watching
+        - Pushing to git
     end note
     
     note right of Standby
-        DR site
-        Empty cluster
-        Waiting for activation
+        Standby Mode:
+        - NO VMs
+        - ArgoCD disabled
+        - Operator dormant
+        - Ready to activate
     end note
 ```
 
@@ -186,10 +178,10 @@ graph LR
         S4[Operator<br/>DORMANT]
         S5[Git Operations<br/>NONE]
         
-        S1 -.x|does not create| S2
-        S2 -.x|no sync| S3
-        S4 -.x|nothing to watch| S3
-        S4 -.x|no operations| S5
+        S1 -.-|does not create| S2
+        S2 -.-|no sync| S3
+        S4 -.-|nothing to watch| S3
+        S4 -.-|no operations| S5
     end
     
     A1 -.mode change.-> S1
@@ -283,8 +275,8 @@ graph TB
         S2_NoVMs[No VMs<br/>Empty]
         S2_NoArgo[ArgoCD<br/>Disabled]
         
-        S2_VGS -.x|dormant| S2_NoVMs
-        S2_VGS -.x|not created| S2_NoArgo
+        S2_VGS -.-|dormant| S2_NoVMs
+        S2_VGS -.-|not created| S2_NoArgo
     end
     
     subgraph "External"
@@ -301,7 +293,7 @@ graph TB
     S1_VGS -->|push| Git
     S1_Argo <-->|sync| Git
     
-    S2_VGS -.x|no operations| Git
+    S2_VGS -.-|no operations| Git
     
     style ACM fill:#E00
     style Git fill:#f05032,color:#fff
@@ -340,11 +332,9 @@ sequenceDiagram
     S->>S: Mode: standby → active
     S->>G: ArgoCD syncs VMs
     
-    rect rgb(255, 230, 230)
-        Note over S,G: First commit from new active cluster
-        S->>G: git commit & push<br/>"Update VM default/vm1<br/>Cluster: standby-site2<br/>Timestamp: 2026-04-27T15:05:00Z"
-        Note over G: Cluster ID changed!<br/>Indicates failover occurred
-    end
+    Note over S,G: First commit from new active cluster
+    S->>G: git commit & push<br/>"Update VM default/vm1<br/>Cluster: standby-site2<br/>Timestamp: 2026-04-27T15:05:00Z"
+    Note over G: Cluster ID changed!<br/>Indicates failover occurred
 ```
 
 ## Health Check Flow

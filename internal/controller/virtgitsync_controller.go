@@ -283,7 +283,7 @@ func (r *VirtGitSyncReconciler) syncAllVMsToGit(ctx context.Context, vgs *virtv1
 
 	// Track expected VM files
 	expectedFiles := make(map[string]bool)
-	var changedFiles []string
+	changedFiles := make([]string, 0, len(vmList.Items))
 
 	for i := range vmList.Items {
 		vm := &vmList.Items[i]
@@ -402,87 +402,6 @@ func (r *VirtGitSyncReconciler) syncAllVMsToGit(ctx context.Context, vgs *virtv1
 	return nil
 }
 
-// autoUnpauseSyncedVMs removes pause annotations from VMs after git sync
-// This allows ArgoCD to resume reconciliation now that git matches the cluster
-func (r *VirtGitSyncReconciler) autoUnpauseSyncedVMs(ctx context.Context, vgs *virtv1alpha1.VirtGitSync, vms *[]kubevirtv1.VirtualMachine) error {
-	logger := log.FromContext(ctx)
-
-	pausedVMCount := 0
-	unpausedVMs := 0
-
-	for i := range *vms {
-		vm := &(*vms)[i]
-
-		// Skip if VM doesn't have pause annotation
-		if !isVMPaused(vm) {
-			continue
-		}
-
-		pausedVMCount++
-
-		// Skip if VM is being deleted
-		if vm.DeletionTimestamp != nil {
-			continue
-		}
-
-		// Fetch latest version of VM to avoid conflicts
-		vmKey := types.NamespacedName{
-			Name:      vm.Name,
-			Namespace: vm.Namespace,
-		}
-		latestVM := &kubevirtv1.VirtualMachine{}
-		if err := r.Get(ctx, vmKey, latestVM); err != nil {
-			logger.Error(err, "Failed to fetch latest VM for unpause", "vm", vm.Name, "namespace", vm.Namespace)
-			continue
-		}
-
-		// Check again if pause annotation still exists (might have been removed already)
-		if !isVMPaused(latestVM) {
-			continue
-		}
-
-		// Check if minimum pause duration has elapsed
-		if latestVM.Annotations != nil {
-			if pauseTimeStr, ok := latestVM.Annotations[PauseTimestampAnnotation]; ok {
-				pauseTime, err := time.Parse(time.RFC3339, pauseTimeStr)
-				if err != nil {
-					logger.Error(err, "Failed to parse pause timestamp, will remove anyway", "vm", latestVM.Name, "timestamp", pauseTimeStr)
-				} else {
-					elapsed := time.Since(pauseTime)
-					if elapsed < MinimumPauseDuration {
-						// Not enough time has passed, keep the pause annotation
-						logger.V(1).Info("Pause annotation too recent, keeping it",
-							"vm", latestVM.Name,
-							"elapsed", elapsed.Seconds(),
-							"minimum", MinimumPauseDuration.Seconds())
-						continue
-					}
-				}
-			}
-		}
-
-		// Remove pause annotation and timestamp from latest version
-		if latestVM.Annotations != nil {
-			delete(latestVM.Annotations, PauseArgoAnnotation)
-			delete(latestVM.Annotations, PauseTimestampAnnotation)
-
-			if err := r.Update(ctx, latestVM); err != nil {
-				logger.Error(err, "Failed to auto-remove pause annotation", "vm", latestVM.Name, "namespace", latestVM.Namespace)
-				// Continue with other VMs even if one fails
-				continue
-			}
-
-			unpausedVMs++
-			logger.Info("Auto-removed pause annotation (git sync complete)", "vm", latestVM.Name, "namespace", latestVM.Namespace)
-		}
-	}
-
-	// Note: We don't re-enable ArgoCD automated sync here
-	// The handlePausedVMsSync function (called in the main reconcile loop) will handle that
-
-	return nil
-}
-
 // isArgoCDEnabled checks if ArgoCD integration is enabled
 func (r *VirtGitSyncReconciler) isArgoCDEnabled(vgs *virtv1alpha1.VirtGitSync) bool {
 	if vgs.Spec.ArgoCD == nil {
@@ -582,8 +501,6 @@ func (r *VirtGitSyncReconciler) findPausedVMs(ctx context.Context, vgs *virtv1al
 	return pausedVMs, nil
 }
 
-// handlePausedVMsSync checks for paused VMs and disables/enables ArgoCD automated sync accordingly
-// This function must be called AFTER reconcileArgoCDApplication to override the sync policy
 // triggerArgoCDSyncIfClean triggers an ArgoCD sync operation, but only if git is clean
 // This prevents syncing while there are uncommitted/unpushed changes that could cause drift
 func (r *VirtGitSyncReconciler) triggerArgoCDSyncIfClean(ctx context.Context, vgs *virtv1alpha1.VirtGitSync, gitManager *gitmgr.Manager) error {
@@ -604,34 +521,6 @@ func (r *VirtGitSyncReconciler) triggerArgoCDSyncIfClean(ctx context.Context, vg
 	argoManager := argocdmgr.NewManager(r.Client)
 	if err := argoManager.TriggerSync(ctx, vgs); err != nil {
 		return fmt.Errorf("failed to trigger sync: %w", err)
-	}
-
-	return nil
-}
-
-func (r *VirtGitSyncReconciler) handlePausedVMsSync(ctx context.Context, vgs *virtv1alpha1.VirtGitSync) error {
-	logger := log.FromContext(ctx)
-
-	// Find all paused VMs
-	pausedVMs, err := r.findPausedVMs(ctx, vgs)
-	if err != nil {
-		return fmt.Errorf("failed to find paused VMs: %w", err)
-	}
-
-	argoManager := argocdmgr.NewManager(r.Client)
-
-	if len(pausedVMs) > 0 {
-		// There are paused VMs - ensure automated sync is disabled
-		logger.V(1).Info("Paused VMs detected, ensuring automated sync is disabled", "count", len(pausedVMs))
-		if err := argoManager.DisableAutomatedSync(ctx, vgs); err != nil {
-			return fmt.Errorf("failed to disable automated sync: %w", err)
-		}
-	} else {
-		// No paused VMs - ensure automated sync is enabled (if configured in VirtGitSync spec)
-		logger.V(1).Info("No paused VMs, ensuring automated sync is enabled per VirtGitSync spec")
-		if err := argoManager.EnableAutomatedSync(ctx, vgs); err != nil {
-			return fmt.Errorf("failed to enable automated sync: %w", err)
-		}
 	}
 
 	return nil
@@ -804,7 +693,10 @@ func cleanVMForGitOps(vm *kubevirtv1.VirtualMachine) map[string]interface{} {
 	// Marshal spec to map for manipulation
 	specBytes, _ := json.Marshal(vm.Spec)
 	var specMap map[string]interface{}
-	json.Unmarshal(specBytes, &specMap)
+	if err := json.Unmarshal(specBytes, &specMap); err != nil {
+		// This should never fail since we just marshaled it, but handle it gracefully
+		return nil
+	}
 
 	// Clean the template metadata if it exists
 	if template, ok := specMap["template"].(map[string]interface{}); ok {

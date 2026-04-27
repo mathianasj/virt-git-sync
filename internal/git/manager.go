@@ -227,7 +227,7 @@ func (m *Manager) ListFiles(pattern string) ([]string, error) {
 	}
 
 	// Convert absolute paths to relative paths
-	var relPaths []string
+	relPaths := make([]string, 0, len(matches))
 	for _, match := range matches {
 		relPath, err := filepath.Rel(m.workDir, match)
 		if err != nil {
@@ -261,7 +261,7 @@ func (m *Manager) DeleteFile(path string) error {
 	dir := filepath.Dir(fullPath)
 	entries, err := os.ReadDir(dir)
 	if err == nil && len(entries) == 0 {
-		os.Remove(dir) // Ignore error, best effort
+		_ = os.Remove(dir) // Ignore error, best effort
 	}
 
 	return nil

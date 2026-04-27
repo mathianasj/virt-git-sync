@@ -32,6 +32,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+const (
+	// DefaultArgoCDNamespace is the default namespace for ArgoCD
+	DefaultArgoCDNamespace = "argocd"
+	// OwnerLabel is the label used to track VirtGitSync ownership of ArgoCD resources
+	OwnerLabel = "virt-git-sync.mathianasj.github.com/owner"
+)
+
 // Manager handles ArgoCD Application CR management
 type Manager struct {
 	client client.Client
@@ -55,7 +62,7 @@ func (m *Manager) ReconcileApplication(ctx context.Context, vgs *virtv1alpha1.Vi
 	// Get ArgoCD namespace
 	argoNamespace := vgs.Spec.ArgoCD.Namespace
 	if argoNamespace == "" {
-		argoNamespace = "argocd"
+		argoNamespace = DefaultArgoCDNamespace
 	}
 
 	// Try to get existing Application
@@ -66,7 +73,7 @@ func (m *Manager) ReconcileApplication(ctx context.Context, vgs *virtv1alpha1.Vi
 	}, app)
 
 	// Label to track ownership (since we can't use cross-namespace owner references)
-	ownerLabel := "virt-git-sync.mathianasj.github.com/owner"
+	ownerLabel := OwnerLabel
 	ownerValue := fmt.Sprintf("%s.%s", vgs.Namespace, vgs.Name)
 
 	if err != nil {
@@ -140,14 +147,14 @@ func (m *Manager) ReconcileRepository(ctx context.Context, vgs *virtv1alpha1.Vir
 	// Get ArgoCD namespace
 	argoNamespace := vgs.Spec.ArgoCD.Namespace
 	if argoNamespace == "" {
-		argoNamespace = "argocd"
+		argoNamespace = DefaultArgoCDNamespace
 	}
 
 	// Secret name for ArgoCD repository credentials
 	secretName := fmt.Sprintf("virt-git-sync-repo-%s-%s", vgs.Namespace, vgs.Name)
 
 	// Label to track ownership
-	ownerLabel := "virt-git-sync.mathianasj.github.com/owner"
+	ownerLabel := OwnerLabel
 	ownerValue := fmt.Sprintf("%s.%s", vgs.Namespace, vgs.Name)
 
 	// Build secret data
@@ -227,7 +234,7 @@ func (m *Manager) DeleteRepository(ctx context.Context, vgs *virtv1alpha1.VirtGi
 	// Get ArgoCD namespace
 	argoNamespace := vgs.Spec.ArgoCD.Namespace
 	if argoNamespace == "" {
-		argoNamespace = "argocd"
+		argoNamespace = DefaultArgoCDNamespace
 	}
 
 	// Secret name
@@ -273,7 +280,7 @@ func (m *Manager) DeleteApplication(ctx context.Context, vgs *virtv1alpha1.VirtG
 	// Get ArgoCD namespace
 	argoNamespace := vgs.Spec.ArgoCD.Namespace
 	if argoNamespace == "" {
-		argoNamespace = "argocd"
+		argoNamespace = DefaultArgoCDNamespace
 	}
 
 	// Try to get Application
@@ -292,7 +299,7 @@ func (m *Manager) DeleteApplication(ctx context.Context, vgs *virtv1alpha1.VirtG
 	}
 
 	// Verify ownership via label
-	ownerLabel := "virt-git-sync.mathianasj.github.com/owner"
+	ownerLabel := OwnerLabel
 	ownerValue := fmt.Sprintf("%s.%s", vgs.Namespace, vgs.Name)
 
 	if app.Labels == nil || app.Labels[ownerLabel] != ownerValue {
@@ -387,11 +394,11 @@ func (m *Manager) UpdateIgnoreDifferences(ctx context.Context, vgs *virtv1alpha1
 
 	argoNamespace := vgs.Spec.ArgoCD.Namespace
 	if argoNamespace == "" {
-		argoNamespace = "argocd"
+		argoNamespace = DefaultArgoCDNamespace
 	}
 
 	// Build ignoreDifferences list for paused VMs
-	var vmIgnoreDiffs []argocdv1alpha1.ResourceIgnoreDifferences
+	vmIgnoreDiffs := make([]argocdv1alpha1.ResourceIgnoreDifferences, 0, len(pausedVMs))
 	for _, vmName := range pausedVMs {
 		vmIgnoreDiffs = append(vmIgnoreDiffs, argocdv1alpha1.ResourceIgnoreDifferences{
 			Group: "kubevirt.io",
@@ -471,7 +478,7 @@ func (m *Manager) DisableAutomatedSync(ctx context.Context, vgs *virtv1alpha1.Vi
 
 	argoNamespace := vgs.Spec.ArgoCD.Namespace
 	if argoNamespace == "" {
-		argoNamespace = "argocd"
+		argoNamespace = DefaultArgoCDNamespace
 	}
 
 	// Retry with exponential backoff to handle conflicts
@@ -515,7 +522,7 @@ func (m *Manager) EnableAutomatedSync(ctx context.Context, vgs *virtv1alpha1.Vir
 
 	argoNamespace := vgs.Spec.ArgoCD.Namespace
 	if argoNamespace == "" {
-		argoNamespace = "argocd"
+		argoNamespace = DefaultArgoCDNamespace
 	}
 
 	// Get the desired sync policy from VirtGitSync spec
@@ -584,7 +591,7 @@ func (m *Manager) TriggerSync(ctx context.Context, vgs *virtv1alpha1.VirtGitSync
 
 	argoNamespace := vgs.Spec.ArgoCD.Namespace
 	if argoNamespace == "" {
-		argoNamespace = "argocd"
+		argoNamespace = DefaultArgoCDNamespace
 	}
 
 	// Retry with exponential backoff to handle conflicts

@@ -22,7 +22,7 @@ import (
 	"os/exec"
 	"strings"
 
-	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive
+	. "github.com/onsi/ginkgo/v2" //nolint:revive // Dot import is standard for Ginkgo BDD tests
 )
 
 const (
@@ -87,7 +87,7 @@ func UninstallCertManager() {
 // InstallCertManager installs the cert manager bundle.
 func InstallCertManager() error {
 	url := fmt.Sprintf(certmanagerURLTmpl, certmanagerVersion)
-	cmd := exec.Command("kubectl", "apply", "-f", url)
+	cmd := exec.Command("kubectl", "apply", "-f", url) //nolint:gosec // Test utility - URL is from const
 	if _, err := Run(cmd); err != nil {
 		return err
 	}
@@ -110,7 +110,7 @@ func LoadImageToKindClusterWithName(name string) error {
 		cluster = v
 	}
 	kindOptions := []string{"load", "docker-image", name, "--name", cluster}
-	cmd := exec.Command("kind", kindOptions...)
+	cmd := exec.Command("kind", kindOptions...) //nolint:gosec // Test utility - args from const/env
 	_, err := Run(cmd)
 	return err
 }

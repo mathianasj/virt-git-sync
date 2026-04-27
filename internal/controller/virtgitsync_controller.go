@@ -50,13 +50,6 @@ import (
 const (
 	virtGitSyncFinalizer = "virt.mathianasj.github.com/finalizer"
 	vmGitSyncFinalizer   = "virt.mathianasj.github.com/vm-finalizer"
-	// PauseArgoAnnotation is the annotation key to pause Argo reconciliation
-	PauseArgoAnnotation = "virt-git-sync/pause-argo"
-	// PauseTimestampAnnotation tracks when the pause annotation was added
-	PauseTimestampAnnotation = "virt-git-sync/pause-timestamp"
-	// MinimumPauseDuration is the minimum time to keep the pause annotation (30 seconds)
-	// This gives ArgoCD time to process the ignoreDifferences update
-	MinimumPauseDuration = 30 * time.Second
 )
 
 // VirtGitSyncReconciler reconciles a VirtGitSync object
@@ -434,65 +427,24 @@ func (r *VirtGitSyncReconciler) reconcileArgoCDApplication(ctx context.Context, 
 		return fmt.Errorf("failed to reconcile Application: %w", err)
 	}
 
-	// Find paused VMs
-	pausedVMs, err := r.findPausedVMs(ctx, vgs)
-	if err != nil {
-		return fmt.Errorf("failed to find paused VMs: %w", err)
-	}
-
-	// Update ignoreDifferences for paused VMs
-	if err := argoManager.UpdateIgnoreDifferences(ctx, vgs, pausedVMs); err != nil {
-		return fmt.Errorf("failed to update ignoreDifferences: %w", err)
-	}
-
 	// Update status
 	appName := vgs.Spec.ArgoCD.ApplicationName
 	if appName == "" {
 		appName = vgs.Name
 	}
 
-	vgs.Status.PausedVMs = pausedVMs
 	vgs.Status.ArgoCDStatus = &virtv1alpha1.ArgoCDStatus{
 		ApplicationName:    appName,
 		ApplicationCreated: true,
 		LastUpdated:        &metav1.Time{Time: time.Now()},
 	}
 
-	logger.Info("Reconciled ArgoCD Application", "application", appName, "pausedVMs", len(pausedVMs))
+	logger.Info("Reconciled ArgoCD Application", "application", appName)
 
 	return nil
 }
 
 // findPausedVMs finds all VMs with pause annotation
-func (r *VirtGitSyncReconciler) findPausedVMs(ctx context.Context, vgs *virtv1alpha1.VirtGitSync) ([]string, error) {
-	// List all VMs across all namespaces
-	vmList := &kubevirtv1.VirtualMachineList{}
-	var listOpts []client.ListOption
-
-	// Apply VM selector if specified
-	if vgs.Spec.VMSelector != nil {
-		selector, err := metav1.LabelSelectorAsSelector(vgs.Spec.VMSelector)
-		if err != nil {
-			return nil, err
-		}
-		listOpts = append(listOpts, client.MatchingLabelsSelector{Selector: selector})
-	}
-
-	if err := r.List(ctx, vmList, listOpts...); err != nil {
-		return nil, err
-	}
-
-	// Find paused VMs
-	var pausedVMs []string
-	for _, vm := range vmList.Items {
-		if isVMPaused(&vm) {
-			pausedVMs = append(pausedVMs, vm.Name)
-		}
-	}
-
-	return pausedVMs, nil
-}
-
 // triggerArgoCDSyncIfClean triggers an ArgoCD sync operation, but only if git is clean
 // This prevents syncing while there are uncommitted/unpushed changes that could cause drift
 func (r *VirtGitSyncReconciler) triggerArgoCDSyncIfClean(ctx context.Context, vgs *virtv1alpha1.VirtGitSync, gitManager *gitmgr.Manager) error {
@@ -1036,9 +988,3 @@ func mapsEqual(a, b map[string]string) bool {
 
 // gitCommit performs git add and commit for a file
 // isVMPaused checks if a VM has the pause annotation
-func isVMPaused(vm *kubevirtv1.VirtualMachine) bool {
-	if vm.Annotations == nil {
-		return false
-	}
-	return vm.Annotations[PauseArgoAnnotation] == "true"
-}

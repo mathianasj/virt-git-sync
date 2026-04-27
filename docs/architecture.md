@@ -67,31 +67,17 @@ sequenceDiagram
     Ctrl->>Ctrl: Update status.gitStatus
     
     Ctrl->>Argo: Create/Update Application CR
-    Note over Argo: Application points to Git Repo
+    Note over Argo: Application points to Git Repo<br/>Automated sync DISABLED
     Ctrl->>Ctrl: Update status.argocdStatus
     
-    Repo->>AC: ArgoCD sync from git
-    AC->>VM: Apply/Update VM from git
+    Note over VM,AC: Manual Sync Control
     
-    Note over VM,AC: Pause Annotation Flow
+    Ctrl->>Ctrl: Check git clean
+    Ctrl->>Argo: Trigger manual sync<br/>(only when git clean)
+    Argo->>Repo: Fetch from git
+    Argo->>VM: Apply/Update VM from git
     
-    VM->>Ctrl: Pause annotation added
-    Ctrl->>Ctrl: Detect paused VM
-    Ctrl->>Argo: Update ignoreDifferences<br/>for paused VM
-    Ctrl->>Ctrl: Update status.pausedVMs
-    
-    Note over AC: ArgoCD ignores this VM
-    
-    VM->>Ctrl: Manual changes made
-    Ctrl->>Git: Push to git
-    Git->>Repo: Commit changes
-    
-    Note over AC: ArgoCD does NOT revert<br/>(ignoreDifferences)
-    
-    VM->>Ctrl: Pause annotation removed
-    Ctrl->>Argo: Remove from ignoreDifferences
-    
-    Note over AC: ArgoCD resumes reconciliation
+    Note over Ctrl,Argo: Operator controls sync timing<br/>prevents race conditions
 ```
 
 ## Reconciliation Loop
@@ -124,10 +110,11 @@ flowchart TD
     CheckArgo -->|No| Done
     CheckArgo -->|Yes| CreateApp[Create/Update<br/>Application CR]
     
-    CreateApp --> FindPaused[Find VMs with<br/>pause annotation]
-    FindPaused --> UpdateIgnore[Update Application<br/>ignoreDifferences]
-    UpdateIgnore --> UpdateArgoStatus[Update status.argocdStatus]
-    UpdateArgoStatus --> Done([Done])
+    CreateApp --> UpdateArgoStatus[Update status.argocdStatus]
+    UpdateArgoStatus --> CheckClean{Git<br/>clean?}
+    CheckClean -->|No| Done
+    CheckClean -->|Yes| TriggerSync[Trigger ArgoCD<br/>manual sync]
+    TriggerSync --> Done([Done])
     
     Error1 --> Requeue[Requeue with error]
     

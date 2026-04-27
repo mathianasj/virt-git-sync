@@ -7,16 +7,9 @@ Visual documentation and diagrams for the VirtGitSync operator.
 ### [Architecture](architecture.md)
 Comprehensive architecture documentation including:
 - **System Architecture** - Component relationships and data flow
-- **Data Flow** - Sequence diagram showing VM sync and pause workflows
+- **Data Flow** - Sequence diagram showing VM sync and manual sync control
 - **Reconciliation Loop** - Detailed flowchart of the operator's reconciliation process
 - **YAML Cleaning Process** - How runtime metadata is stripped for zero-drift GitOps
-
-### [Pause Workflow](pause-workflow.md)
-Detailed pause annotation workflow including:
-- **Workflow Diagram** - Complete sequence of pause/unpause operations
-- **State Transitions** - VM state machine with pause/unpause transitions
-- **ignoreDifferences Update** - Flowchart of Application spec updates
-- **Use Cases** - Common scenarios with visual examples
 
 ## Quick Reference
 
@@ -88,13 +81,8 @@ status:
   argocdStatus:
     applicationCreated: true             # Application CR exists
     applicationName: "my-vms"           # Name of Application
+    lastUpdated: "2026-04-27T10:30:00Z" # Last Application update
     lastError: ""                        # Empty if no errors
-  
-  pausedVMs:                             # List of paused VMs
-  - name: "vm-1"
-    namespace: "default"
-  - name: "vm-2"
-    namespace: "production"
   
   conditions:
   - type: GitReady
@@ -105,22 +93,6 @@ status:
     status: "True"
     reason: "ApplicationCreated"
     message: "ArgoCD Application is ready"
-```
-
-## Annotations
-
-| Annotation | Value | Effect |
-|------------|-------|--------|
-| `virt-git-sync/pause-argo` | `"true"` | Pauses ArgoCD reconciliation for this VM |
-| `virt-git-sync/pause-argo` | (removed) | Resumes ArgoCD reconciliation |
-
-**Example**:
-```bash
-# Pause
-kubectl annotate vm my-vm virt-git-sync/pause-argo="true"
-
-# Resume
-kubectl annotate vm my-vm virt-git-sync/pause-argo-
 ```
 
 ## Commit Message Format

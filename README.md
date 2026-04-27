@@ -4,13 +4,13 @@ A Kubernetes operator that watches KubeVirt VirtualMachine resources and syncs t
 
 ## Description
 
-VirtGitSync enables GitOps for KubeVirt VirtualMachines by automatically pushing cleaned VM manifests to git and managing ArgoCD Applications. This creates a single source of truth in git while allowing temporary manual changes through a pause annotation system.
+VirtGitSync enables GitOps for KubeVirt VirtualMachines by automatically pushing cleaned VM manifests to git and managing ArgoCD Applications with manual sync control. This creates a single source of truth in git while preventing race conditions between VM changes and ArgoCD reconciliation.
 
 **Key Features:**
 - **Automatic git sync**: VM changes pushed to git repository in real-time
 - **Zero drift**: YAML cleaning eliminates runtime metadata for Argo CD compatibility
-- **ArgoCD integration**: Automatically creates and manages Application CRs
-- **Pause annotation**: Temporarily stop Argo reconciliation per-VM for manual changes
+- **ArgoCD integration**: Automatically creates and manages Application CRs with manual sync control
+- **Manual sync control**: Operator triggers ArgoCD syncs only after git push completes
 - **Comprehensive auth**: SSH keys and HTTPS tokens via Kubernetes Secrets
 - **Change tracking**: Descriptive commit messages with VM change details
 - **Status visibility**: Git and ArgoCD status tracked in VirtGitSync CR
@@ -127,41 +127,18 @@ spec:
       prune: true
 ```
 
-This creates an ArgoCD Application that automatically syncs VMs from git.
+This creates an ArgoCD Application that syncs VMs from git only when the operator triggers it.
 
-### Pause Annotation Workflow
+### Manual Sync Control
 
-📊 **[See detailed pause workflow diagrams](docs/pause-workflow.md)** - Visual guide to pause/unpause flow and use cases
+The operator **disables ArgoCD's automated sync** and instead manually triggers syncs at the right time:
 
-When you need to make manual changes to a VM without Argo reverting them:
+1. **VM changes** → Operator detects and cleans YAML
+2. **Git push** → Changes pushed to repository
+3. **Sync trigger** → Operator manually triggers ArgoCD sync (only when git is clean)
+4. **ArgoCD applies** → Changes deployed back to cluster
 
-```bash
-# Pause Argo reconciliation for a specific VM
-kubectl annotate vm my-vm virt-git-sync/pause-argo="true"
-
-# Make your manual changes
-kubectl patch vm my-vm --type merge -p '{"spec":{"running":true}}'
-
-# Changes are still pushed to git
-# But ArgoCD won't revert them due to ignoreDifferences
-
-# Resume Argo reconciliation when done
-kubectl annotate vm my-vm virt-git-sync/pause-argo-
-```
-
-**How it works:**
-```mermaid
-sequenceDiagram
-    User->>VM: Add pause annotation
-    VM->>Operator: Event
-    Operator->>ArgoCD App: Update ignoreDifferences
-    User->>VM: Make manual changes
-    Operator->>Git: Push changes
-    Note over ArgoCD: Ignores this VM
-    User->>VM: Remove pause annotation
-    Operator->>ArgoCD App: Remove from ignoreDifferences
-    Note over ArgoCD: Resumes reconciliation
-```
+This prevents race conditions where ArgoCD might sync while the operator is still pushing changes to git.
 
 ## How It Works
 
@@ -185,9 +162,8 @@ flowchart LR
 2. **YAML Cleaning**: Strips runtime metadata to prevent drift (resourceVersion, uid, etc.)
 3. **Git Commit**: Cleaned YAML committed with descriptive message
 4. **Git Push**: Changes pushed to remote repository
-5. **ArgoCD Application**: Operator creates/updates Application CR
-6. **Argo Sync**: ArgoCD syncs VMs from git to cluster
-7. **Pause Handling**: Pause annotation updates Application's `ignoreDifferences`
+5. **Trigger Sync**: Operator manually triggers ArgoCD sync (only when git is clean)
+6. **Argo Sync**: ArgoCD syncs VMs from git back to cluster
 
 📊 **[View detailed reconciliation flow](docs/architecture.md#reconciliation-loop)**
 
@@ -260,7 +236,7 @@ Key status fields:
 - `status.gitStatus.lastPush`: Timestamp of last push
 - `status.gitStatus.lastError`: Last git error (if any)
 - `status.argocdStatus.applicationCreated`: Whether Application CR exists
-- `status.pausedVMs`: List of VMs currently paused from Argo
+- `status.argocdStatus.lastUpdated`: Last Application update time
 
 ## Configuration Reference
 
@@ -341,18 +317,15 @@ make run       # Run locally
 - Review operator logs for RBAC errors
 - Ensure operator has permissions for `applications.argoproj.io`
 
-### Pause Annotation Doesn't Work
+### Argo CD Shows Drift
 
-**Symptom**: Argo still reverts manual changes
+**Symptom**: Argo shows differences between git and cluster
 
 **Solutions**:
-- Verify annotation key: `virt-git-sync/pause-argo="true"`
-- Check `status.pausedVMs` includes the VM name
-- Inspect Application's `ignoreDifferences`:
-  ```bash
-  kubectl get application -n argocd <name> -o jsonpath='{.spec.ignoreDifferences}'
-  ```
-- Wait for Argo refresh cycle or manually refresh
+- Verify YAML cleaning: `kubectl diff -f <git-yaml>`
+- Check if system fields leaked through
+- Review cleanVMForGitOps() logic
+- Check operator logs for git push errors
 
 ## Migration from v1.x
 

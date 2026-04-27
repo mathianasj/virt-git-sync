@@ -39,8 +39,8 @@ sequenceDiagram
 1. **Watches** VirtualMachine resources (filtered by vmSelector if specified)
 2. **Cleans** VMs to GitOps-compatible YAML (zero drift)
 3. **Pushes** cleaned YAMLs to git repository (SSH or HTTPS auth)
-4. **Creates** ArgoCD Application CR (owned by VirtGitSync)
-5. **Manages** dynamic pause/resume of Argo reconciliation per-VM
+4. **Creates** ArgoCD Application CR (owned by VirtGitSync) with automated sync DISABLED
+5. **Manually triggers** ArgoCD syncs only after git push completes (prevents race conditions)
 6. **Tracks** git and ArgoCD status in VirtGitSync status
 
 ### Breaking Changes from v1.x
@@ -54,18 +54,18 @@ sequenceDiagram
 ### API Definition
 - **`api/v1alpha1/virtgitsync_types.go`** - CRD definition
   - `VirtGitSyncSpec`: Git repo config, ArgoCD config, VM selector
-  - `VirtGitSyncStatus`: Git status, ArgoCD status, paused VMs list
+  - `VirtGitSyncStatus`: Git status, ArgoCD status
   - `GitRepositorySpec`: URL, branch, auth secret
   - `ArgoCDSpec`: Namespace, Application name, sync policy
   - `GitStatus`: Last commit SHA, last push time, errors
-  - `ArgoCDStatus`: Application name, creation status, errors
+  - `ArgoCDStatus`: Application name, creation status, last updated, errors
 
 ### Core Logic
 - **`internal/controller/virtgitsync_controller.go`** - Main controller
   - `Reconcile()`: Initializes git manager, reconciles ArgoCD Application
   - `getOrCreateGitManager()`: Clones/pulls git repo with auth
   - `reconcileArgoCDApplication()`: Creates/updates Application CR
-  - `findPausedVMs()`: Finds VMs with pause annotation
+  - `triggerArgoCDSyncIfClean()`: Manually triggers ArgoCD sync when git is clean
   - `cleanVMForGitOps()`: Strips runtime metadata (preserved from v1)
   - Event handlers: Enqueue VirtGitSync instances for reconciliation
 
@@ -76,17 +76,18 @@ sequenceDiagram
   - `CommitAndPush()`: Commit changes and push to remote
   - `WriteFile()`: Write VM YAML to repo
   - `DeleteFile()`: Remove VM YAML from repo
+  - `HasUncommittedChanges()`: Check if git working tree is clean
   - `setupAuth()`: Handle SSH keys and basic auth from secrets
 
 ### ArgoCD Integration
 - **`internal/argocd/manager.go`** - ArgoCD Application CR management
-  - `ReconcileApplication()`: Create/update Application with ownerReference
-  - `UpdateIgnoreDifferences()`: Manage paused VMs list
+  - `ReconcileApplication()`: Create/update Application with ownerReference (automated sync DISABLED)
+  - `TriggerSync()`: Manually trigger ArgoCD sync operation
   - `buildApplicationSpec()`: Build Application spec from VirtGitSync
 
 - **`internal/argocd/types/types.go`** - ArgoCD Application types
   - Local type definitions to avoid dependency conflicts
-  - `Application`, `ApplicationSpec`, `ResourceIgnoreDifferences`
+  - `Application`, `ApplicationSpec`, `SyncOperation`
 
 ### Tests
 - **`internal/controller/virtgitsync_controller_test.go`** - Integration tests
@@ -128,15 +129,15 @@ Pattern: `namespace/vmname.yaml` (within syncPath)
 - Overwrites on update (single source of truth)
 - Organized by namespace
 
-### Pause Annotation Workflow
-1. User adds `virt-git-sync/pause-argo="true"` to VM
-2. Controller detects annotation in next reconcile
-3. Controller updates Application's `ignoreDifferences` to exclude that VM
-4. ArgoCD stops reconciling the paused VM
-5. User can make manual changes without Argo reverting
-6. User removes annotation when done
-7. Controller removes VM from `ignoreDifferences`
-8. ArgoCD resumes reconciliation
+### Manual Sync Control
+1. Operator **disables ArgoCD automated sync** in Application spec
+2. When VMs change, operator pushes to git
+3. After git push, operator checks if git working tree is clean
+4. If clean, operator **manually triggers** ArgoCD sync operation
+5. ArgoCD syncs VMs from git back to cluster
+6. This prevents race conditions between git push and ArgoCD sync
+
+**Why manual sync?** Prevents ArgoCD from syncing while operator is still pushing changes, which could cause drift or conflicts.
 
 ### ArgoCD Application Ownership
 - VirtGitSync creates Application CR with `ownerReference`
@@ -225,7 +226,6 @@ make manifests        # Generate CRD manifests
 make install          # Install CRDs to cluster
 make run             # Run operator locally
 make test            # Run all tests
-make test-auto-pause # Run auto-pause/unpause tests only
 go build ./...       # Verify compilation
 ```
 
@@ -269,75 +269,24 @@ git clone <repo-url>
 ls vms/default/
 ```
 
-6. **Test pause annotation:**
+6. **Verify manual sync control:**
 ```bash
-# Pause Argo reconciliation
-kubectl annotate vm test-vm virt-git-sync/pause-argo="true"
-
-# Verify ignoreDifferences updated
-kubectl get application -n argocd <app-name> -o yaml | grep -A10 ignoreDifferences
-
-# Make manual change
+# Make a change to a VM
 kubectl patch vm test-vm --type merge -p '{"spec":{"running":true}}'
 
-# Verify Argo doesn't revert
-kubectl get vm test-vm -o yaml | grep running
-
-# Resume Argo reconciliation
-kubectl annotate vm test-vm virt-git-sync/pause-argo-
-```
-
-### Testing Auto-Pause/Unpause
-
-The auto-pause/unpause functionality has comprehensive automated tests that can be run as part of CI/CD:
-
-```bash
-# Run only auto-pause/unpause tests
-make test-auto-pause
-
-# Run all tests (includes auto-pause tests)
-make test
-```
-
-**What's tested:**
-- ✅ Auto-pause when manual change detected (runStrategy, labels, etc.)
-- ✅ No auto-pause when ArgoCD makes the change (detects `kubectl.kubernetes.io/last-applied-configuration` update)
-- ✅ No auto-pause when VM already paused
-- ✅ No auto-pause when only pause annotation is removed (prevents infinite loop)
-- ✅ No auto-pause for resourceVersion-only changes
-- ✅ Detection of runStrategy changes (Halted → Always, etc.)
-- ✅ Detection of label additions/changes
-- ✅ Auto-pause for manual label changes
-- ✅ Handling of nil runStrategy values
-- ✅ Correct identification of paused VMs
-
-**CI/CD Integration:**
-
-The tests run in GitHub Actions automatically on push/PR:
-- See `.github/workflows/test.yml` for the workflow configuration
-- Tests run on every commit to main/develop branches
-- Separate job specifically for auto-pause tests
-
-**Manual testing workflow:**
-
-```bash
-# 1. Make manual change to VM
-kubectl patch vm test-vm -n vm-1 --type merge -p '{"spec":{"runStrategy":"Always"}}'
-
-# 2. Verify auto-pause annotation added
-kubectl get vm test-vm -n vm-1 -o jsonpath='{.metadata.annotations.virt-git-sync/pause-argo}'
-# Expected: "true"
-
-# 3. Wait for git sync (check logs)
+# Watch operator logs - should see:
+# - VM change detected
+# - YAML cleaned
+# - Git push
+# - Manual sync triggered
 kubectl logs -n default deployment/virt-git-sync-controller-manager -f
 
-# 4. Verify auto-unpause (annotation removed after git sync)
-kubectl get vm test-vm -n vm-1 -o jsonpath='{.metadata.annotations.virt-git-sync/pause-argo}'
-# Expected: (empty - annotation removed)
+# Verify change synced to git
+git pull
+cat vms/default/test-vm.yaml | grep "running: true"
 
-# 5. Verify change persists (ArgoCD doesn't revert)
-kubectl get vm test-vm -n vm-1 -o jsonpath='{.spec.runStrategy}'
-# Expected: "Always"
+# Verify ArgoCD synced from git
+kubectl get vm test-vm -o yaml | grep "running: true"
 ```
 
 ## Status Checking
@@ -379,18 +328,6 @@ Format:
 2. Check ArgoCD namespace in spec (default: "argocd")
 3. Check RBAC permissions for Application CRs
 4. Review `status.argocdStatus.lastError`
-
-### Pause Annotation Not Working
-**Symptoms:** Argo still reconciles paused VM
-
-**Solutions:**
-1. Verify annotation key: `virt-git-sync/pause-argo="true"`
-2. Check `status.pausedVMs` includes the VM
-3. Verify Application's `ignoreDifferences` updated:
-   ```bash
-   kubectl get application -n argocd <name> -o yaml | grep -A5 ignoreDifferences
-   ```
-4. Wait for Argo sync cycle (or trigger manual refresh)
 
 ### Argo CD Shows Drift
 **Symptoms:** Argo shows differences between git and cluster

@@ -170,10 +170,6 @@ type VirtGitSyncStatus struct {
 	// ArgoCDStatus tracks ArgoCD Application state
 	// +optional
 	ArgoCDStatus *ArgoCDStatus `json:"argocdStatus,omitempty"`
-
-	// PausedVMs lists VMs currently paused from ArgoCD reconciliation
-	// +optional
-	PausedVMs []string `json:"pausedVMs,omitempty"`
 }
 
 // GitStatus defines git operation status

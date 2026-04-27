@@ -308,11 +308,6 @@ spec:
                   recently observed VirtGitSync
                 format: int64
                 type: integer
-              pausedVMs:
-                description: PausedVMs lists VMs currently paused from ArgoCD reconciliation
-                items:
-                  type: string
-                type: array
               phase:
                 description: Phase is the current operational phase
                 type: string

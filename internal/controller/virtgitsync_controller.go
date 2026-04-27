@@ -358,7 +358,6 @@ func (r *VirtGitSyncReconciler) syncAllVMsToGit(ctx context.Context, vgs *virtv1
 	}
 
 	// Find and delete orphaned VM files (VMs that were deleted from cluster without finalizer)
-	var deletedVMKeys []string
 	existingFiles, err := gitManager.ListFiles(filepath.Join(syncPath, "*", "*.yaml"))
 	if err != nil {
 		logger.Error(err, "Failed to list existing VM files in git")
@@ -372,13 +371,6 @@ func (r *VirtGitSyncReconciler) syncAllVMsToGit(ctx context.Context, vgs *virtv1
 					continue
 				}
 				changedFiles = append(changedFiles, existingFile)
-
-				// Extract VM key from file path (e.g., "vms/vm-1/vm-name.yaml" -> "vm-1/vm-name")
-				vmNameWithExt := filepath.Base(existingFile)
-				vmName := vmNameWithExt[:len(vmNameWithExt)-5] // Remove .yaml extension
-				namespace := filepath.Base(filepath.Dir(existingFile))
-				vmKey := fmt.Sprintf("%s/%s", namespace, vmName)
-				deletedVMKeys = append(deletedVMKeys, vmKey)
 			}
 		}
 	}
@@ -869,68 +861,8 @@ func (h *VirtualMachineEventHandler) Generic(ctx context.Context, e event.Generi
 	h.enqueueVirtGitSyncs(ctx, vm, q, "generic", nil)
 }
 
-// shouldAutoPause determines if we should automatically add the pause annotation
-// Returns true if this is a manual change (not from ArgoCD)
-//
-// Strategy:
-// 1. Skip if no meaningful changes
-// 2. Skip if ONLY change is to the pause annotation itself (avoid infinite loop)
-// 3. If meaningful change detected → auto-pause (even if already paused, to reset the timer)
-func (h *VirtualMachineEventHandler) shouldAutoPause(oldVM, newVM *kubevirtv1.VirtualMachine, changes map[string]interface{}) bool {
-	// Note: We DO NOT skip if VM is already paused
-	// If there's a new meaningful change, we want to reset the pause timer
-
-	// Skip if no changes at all
-	if len(changes) == 0 {
-		return false
-	}
-
-	// Skip if ONLY resourceVersion changed (no meaningful change)
-	if len(changes) == 1 && changes["metadata.resourceVersion"] != nil {
-		return false
-	}
-
-	// Check if the ONLY annotation change is the pause annotation itself
-	// This prevents infinite loop when user removes pause annotation
-	if changes["metadata.annotations"] != nil && len(changes) <= 2 {
-		// Get old and new pause values
-		oldPause := ""
-		newPause := ""
-		if oldVM.Annotations != nil {
-			oldPause = oldVM.Annotations[PauseArgoAnnotation]
-		}
-		if newVM.Annotations != nil {
-			newPause = newVM.Annotations[PauseArgoAnnotation]
-		}
-
-		// If pause annotation changed and no other meaningful changes, skip
-		if oldPause != newPause {
-			// Check if there are other changes besides resourceVersion and annotations
-			hasOtherChanges := false
-			for k := range changes {
-				if k != "metadata.resourceVersion" && k != "metadata.annotations" {
-					hasOtherChanges = true
-					break
-				}
-			}
-			if !hasOtherChanges {
-				return false // Only pause annotation changed, don't re-add it
-			}
-		}
-	}
-
-	// At this point we know:
-	// 1. VM is not already paused
-	// 2. There are meaningful changes (not just pause annotation)
-	//
-	// Auto-pause to prevent ArgoCD from fighting with this change
-	// The pause annotation tells ArgoCD to temporarily ignore this VM
-	// while our controller syncs the change to git
-	return true
-}
-
 // detectChanges compares old and new VirtualMachine objects and returns a map of changes
-// This is used for logging and determining if auto-pause should trigger
+// This is used for logging VM updates
 func (h *VirtualMachineEventHandler) detectChanges(oldVM, newVM *kubevirtv1.VirtualMachine) map[string]interface{} {
 	changes := make(map[string]interface{})
 

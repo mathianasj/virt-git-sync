@@ -4,10 +4,10 @@ metadata:
   annotations:
     alm-examples: '[]'
     capabilities: Basic Install
-    categories: Developer Tools,Integration & Delivery
-    containerImage: quay.io/mathianasj/virt-git-sync-operator:v0.1.0
+    categories: OpenShift Optional,Integration & Delivery
+    containerImage: quay.io/mathianasj/virt-git-sync:v0.1.0
     createdAt: "2026-02-27T00:00:00Z"
-    description: Kubernetes operator for managing git repository synchronization workloads
+    description: GitOps for KubeVirt VirtualMachines with ArgoCD integration
     repository: https://github.com/mathianasj/virt-git-sync
     support: Joshua Mathianas
   name: virt-git-sync.v0.0.0
@@ -24,49 +24,50 @@ spec:
   description: |
     # VirtGitSync Operator
 
-    The VirtGitSync operator automates the deployment and management of git repository
-    synchronization workloads within Kubernetes and OpenShift clusters.
+    The VirtGitSync operator enables complete GitOps workflows for KubeVirt VirtualMachines.
+    It watches VirtualMachine resources, syncs them to git, and integrates with ArgoCD to
+    maintain a single source of truth in your git repository.
 
     ## Features
 
-    - Automatic injection of git-sync sidecar containers
-    - Support for public and private repositories (HTTPS and SSH authentication)
-    - Configurable sync intervals
-    - Automatic deployment updates on git changes (optional)
-    - Status tracking with commit SHA and sync timestamps
+    - **Automatic VM sync to git** - Watches VirtualMachine resources and commits changes to git
+    - **Clean YAML generation** - Strips runtime metadata for zero-drift GitOps
+    - **ArgoCD integration** - Automatically creates and manages ArgoCD Applications
+    - **Manual sync control** - Prevents race conditions with manual trigger approach
+    - **Pause/resume per-VM** - Use annotations to pause ArgoCD reconciliation for specific VMs
+    - **SSH and HTTPS auth** - Support for private repositories
+    - **Multi-namespace** - Sync VMs across namespaces with label selectors
 
     ## Use Cases
 
-    - Serving static websites from git repositories
-    - Configuration management from git
-    - Continuous deployment of content
-    - GitOps workflows
+    - GitOps workflows for virtual machine management
+    - Disaster recovery - VMs backed up to git
+    - VM template management
+    - Change tracking and audit trail
+    - Multi-cluster VM deployment with ArgoCD
 
     ## Getting Started
 
-    Create a VirtGitSync resource to sync a git repository:
+    Create a VirtGitSync resource to sync VirtualMachines to git:
 
     ```yaml
     apiVersion: virt.mathianasj.github.com/v1alpha1
     kind: VirtGitSync
     metadata:
-      name: my-git-sync
+      name: vm-sync
     spec:
       gitRepository:
-        url: https://github.com/kubernetes/examples.git
-        branch: master
-        depth: 1
-      syncInterval: 60s
-      deployment:
-        replicas: 1
-        template:
-          containers:
-          - name: nginx
-            image: nginx:latest
+        url: https://github.com/yourusername/vm-manifests.git
+        branch: main
+        secretRef:
+          name: git-credentials
+      argocd:
+        namespace: openshift-gitops
+        applicationName: my-vms
     ```
 
-    The operator will create a deployment with your application containers and
-    automatically inject a git-sync sidecar that keeps the repository synchronized.
+    The operator will sync all VirtualMachines to git and create an ArgoCD Application
+    to deploy them from git back to the cluster.
   displayName: VirtGitSync Operator
   icon:
   - base64data: iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==
@@ -85,10 +86,11 @@ spec:
   - supported: false
     type: AllNamespaces
   keywords:
+  - kubevirt
+  - virtualmachine
   - git
-  - sync
   - gitops
-  - deployment
+  - argocd
   links:
   - name: VirtGitSync Repository
     url: https://github.com/mathianasj/virt-git-sync
@@ -98,6 +100,7 @@ spec:
   - email: mathianasj@github.com
     name: Joshua Mathianas
   maturity: alpha
+  minKubeVersion: 1.28.0
   provider:
     name: Joshua Mathianas
   version: 0.0.0

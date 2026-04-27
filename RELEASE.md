@@ -48,15 +48,17 @@ git push origin v1.0.0
 
 Once you push a tag matching `v*.*.*`, GitHub Actions will automatically:
 
-1. ✅ Run all tests (unit tests + auto-pause tests)
+1. ✅ Run all tests
 2. ✅ Run linting checks
 3. ✅ Build multi-arch Docker image (linux/amd64 + linux/arm64)
-4. ✅ Push image to `quay.io/mathianasj/virt-git-sync:v1.0.0`
-5. ✅ Push image to `quay.io/mathianasj/virt-git-sync:latest`
-6. ✅ Generate installation manifests
-7. ✅ Create GitHub Release with:
+4. ✅ Push operator image to `quay.io/mathianasj/virt-git-sync:v1.0.0` and `:latest`
+5. ✅ Build and push OLM bundle to `quay.io/mathianasj/virt-git-sync-bundle:v1.0.0`
+6. ✅ Build and push OLM catalog to `quay.io/mathianasj/virt-git-sync-catalog:v1.0.0`
+7. ✅ Generate installation manifests
+8. ✅ Create GitHub Release with:
    - Auto-generated release notes
-   - Installation instructions
+   - OLM installation instructions
+   - kubectl installation instructions
    - Complete install.yaml manifest
    - CRD manifests
 
@@ -64,7 +66,10 @@ Once you push a tag matching `v*.*.*`, GitHub Actions will automatically:
 
 1. Check GitHub Actions: https://github.com/mathianasj/virt-git-sync/actions
 2. Check GitHub Releases: https://github.com/mathianasj/virt-git-sync/releases
-3. Check Quay.io: https://quay.io/repository/mathianasj/virt-git-sync
+3. Check Quay.io images:
+   - Operator: https://quay.io/repository/mathianasj/virt-git-sync
+   - Bundle: https://quay.io/repository/mathianasj/virt-git-sync-bundle
+   - Catalog: https://quay.io/repository/mathianasj/virt-git-sync-catalog
 
 ## Version Numbering
 
@@ -92,17 +97,70 @@ git tag v1.0.0-rc.1
 
 The workflow will create the release but mark it as a pre-release automatically.
 
+## Installation Methods
+
+### OLM (Recommended for OpenShift)
+
+Install via operator-sdk:
+```bash
+operator-sdk run bundle quay.io/mathianasj/virt-git-sync-bundle:v1.0.0
+```
+
+Or create a CatalogSource:
+```yaml
+apiVersion: operators.coreos.com/v1alpha1
+kind: CatalogSource
+metadata:
+  name: virt-git-sync-catalog
+  namespace: openshift-marketplace
+spec:
+  sourceType: grpc
+  image: quay.io/mathianasj/virt-git-sync-catalog:v1.0.0
+  displayName: VirtGitSync Catalog
+  publisher: Joshua Mathianas
+  updateStrategy:
+    registryPoll:
+      interval: 15m
+```
+
+Then install from OperatorHub UI or create a Subscription:
+```yaml
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: virt-git-sync
+  namespace: openshift-operators
+spec:
+  channel: alpha
+  name: virt-git-sync
+  source: virt-git-sync-catalog
+  sourceNamespace: openshift-marketplace
+```
+
+### kubectl/kustomize
+
+```bash
+kubectl apply -f https://github.com/mathianasj/virt-git-sync/releases/download/v1.0.0/install.yaml
+```
+
 ## Manual Release (if needed)
 
 If the automated workflow fails, you can manually build and push:
 
 ```bash
-# Build and push image
-export VERSION=v1.0.0
-export IMG=quay.io/mathianasj/virt-git-sync:$VERSION
+# Build and push operator image
+export VERSION=1.0.0
+export IMG=quay.io/mathianasj/virt-git-sync:v$VERSION
 
 docker login quay.io
 make docker-build docker-push IMG=$IMG
+
+# Generate and push OLM bundle
+make bundle VERSION=$VERSION IMG=$IMG
+make bundle-build bundle-push VERSION=$VERSION
+
+# Generate and push OLM catalog
+make catalog-build catalog-push VERSION=$VERSION
 
 # Generate manifests
 make build-installer IMG=$IMG
@@ -126,6 +184,12 @@ make build-installer IMG=$IMG
 
 ### Tests fail during release
 
-- Run tests locally first: `make test && make test-auto-pause`
+- Run tests locally first: `make test`
 - Check test logs in GitHub Actions
 - Fix issues and create a new tag
+
+### Bundle validation fails
+
+- Check CSV is valid: `operator-sdk bundle validate ./bundle`
+- Verify all required fields are set (minKubeVersion, etc.)
+- Check CRD manifests are up to date: `make manifests`

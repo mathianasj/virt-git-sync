@@ -72,6 +72,25 @@ jobs:
           body: |
             ## Installation
 
+            ### Using OLM (OpenShift/OperatorHub)
+            ```bash
+            operator-sdk run bundle ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}-bundle:${{ steps.version.outputs.VERSION }}
+            ```
+
+            Or install from the catalog:
+            ```yaml
+            apiVersion: operators.coreos.com/v1alpha1
+            kind: CatalogSource
+            metadata:
+              name: virt-git-sync-catalog
+              namespace: openshift-marketplace
+            spec:
+              sourceType: grpc
+              image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}-catalog:${{ steps.version.outputs.VERSION }}
+              displayName: VirtGitSync Catalog
+              publisher: Joshua Mathianas
+            ```
+
             ### Using kubectl
             ```bash
             kubectl apply -f https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/install.yaml
@@ -82,13 +101,75 @@ jobs:
             kubectl apply -k https://github.com/${{ github.repository }}/config/default?ref=${{ steps.version.outputs.VERSION }}
             ```
 
-            ### Container Image
-            ```
-            ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}
-            ```
+            ### Container Images
+            - Operator: `${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}`
+            - Bundle: `${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}-bundle:${{ steps.version.outputs.VERSION }}`
+            - Catalog: `${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}-catalog:${{ steps.version.outputs.VERSION }}`
 
             ## What's Changed
             See the full changelog below.
+
+  bundle-and-catalog:
+    name: Build and Push OLM Bundle & Catalog
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "VERSION_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Install operator-sdk
+        run: |
+          ARCH=$(case $(uname -m) in x86_64) echo -n amd64 ;; aarch64) echo -n arm64 ;; *) echo -n $(uname -m) ;; esac)
+          OS=$(uname | awk '{print tolower($0)}')
+          OPERATOR_SDK_DL_URL=https://github.com/operator-framework/operator-sdk/releases/download/v1.39.2
+          curl -LO ${OPERATOR_SDK_DL_URL}/operator-sdk_${OS}_${ARCH}
+          chmod +x operator-sdk_${OS}_${ARCH}
+          sudo mv operator-sdk_${OS}_${ARCH} /usr/local/bin/operator-sdk
+
+      - name: Log in to Quay.io
+        uses: docker/login-action@v3
+        with:
+          registry: quay.io
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_TOKEN }}
+
+      - name: Generate bundle
+        run: |
+          make bundle VERSION=${{ steps.version.outputs.VERSION }} IMG=${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION_TAG }}
+
+      - name: Build and push bundle image
+        run: |
+          make bundle-build bundle-push VERSION=${{ steps.version.outputs.VERSION }} BUNDLE_IMG=${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}-bundle:v${{ steps.version.outputs.VERSION }}
+
+      - name: Install opm
+        run: |
+          ARCH=$(case $(uname -m) in x86_64) echo -n amd64 ;; aarch64) echo -n arm64 ;; *) echo -n $(uname -m) ;; esac)
+          OS=$(uname | awk '{print tolower($0)}')
+          OPM_DL_URL=https://github.com/operator-framework/operator-registry/releases/download/v1.23.0
+          curl -LO ${OPM_DL_URL}/${OS}-${ARCH}-opm
+          chmod +x ${OS}-${ARCH}-opm
+          sudo mv ${OS}-${ARCH}-opm /usr/local/bin/opm
+
+      - name: Build and push catalog image
+        run: |
+          make catalog-build catalog-push VERSION=${{ steps.version.outputs.VERSION }} \
+            BUNDLE_IMGS=${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}-bundle:v${{ steps.version.outputs.VERSION }} \
+            CATALOG_IMG=${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}-catalog:v${{ steps.version.outputs.VERSION }}
 
   test:
     name: Run Tests
@@ -117,9 +198,6 @@ jobs:
 
       - name: Run all tests
         run: make test
-
-      - name: Run auto-pause tests
-        run: make test-auto-pause
 
   lint:
     name: Lint

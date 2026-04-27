@@ -70,10 +70,6 @@ spec:
     applicationName: synced-vms
     destinationNamespace: default
     project: default
-    syncPolicy:
-      automated: true
-      selfHeal: true
-      prune: true
 ---
 # Example secret for git authentication (HTTPS)
 # Create this secret before applying the VirtGitSync resource

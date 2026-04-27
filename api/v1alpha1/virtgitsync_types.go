@@ -93,24 +93,9 @@ type ArgoCDSpec struct {
 	// +optional
 	Project string `json:"project,omitempty"`
 
-	// SyncPolicy defines the ArgoCD sync policy
-	// +optional
-	SyncPolicy *ArgoSyncPolicy `json:"syncPolicy,omitempty"`
-}
-
-// ArgoSyncPolicy defines ArgoCD sync policy settings
-type ArgoSyncPolicy struct {
-	// Automated enables automated sync
-	// +optional
-	Automated *bool `json:"automated,omitempty"`
-
-	// SelfHeal enables self-healing
-	// +optional
-	SelfHeal *bool `json:"selfHeal,omitempty"`
-
-	// Prune enables automated pruning
-	// +optional
-	Prune *bool `json:"prune,omitempty"`
+	// NOTE: We do NOT expose syncPolicy because the operator always disables
+	// automated sync and manually controls the sync lifecycle to prevent race
+	// conditions between git pushes and ArgoCD syncs.
 }
 
 // VirtGitSyncPhase represents the current phase of the VirtGitSync

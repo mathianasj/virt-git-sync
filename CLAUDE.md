@@ -184,10 +184,6 @@ spec:
     applicationName: my-vms
     destinationNamespace: default
     project: default
-    syncPolicy:
-      automated: true
-      selfHeal: true
-      prune: true
 ```
 
 ### SSH Key Secret

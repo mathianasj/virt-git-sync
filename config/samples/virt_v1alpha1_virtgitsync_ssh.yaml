@@ -14,10 +14,6 @@ spec:
   syncPath: vms
   argocd:
     namespace: argocd
-    syncPolicy:
-      automated: true
-      selfHeal: true
-      prune: true
 ---
 # Example secret for SSH authentication
 # Create this secret before applying the VirtGitSync resource

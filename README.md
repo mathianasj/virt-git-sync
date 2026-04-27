@@ -121,13 +121,9 @@ spec:
     applicationName: production-vms
     destinationNamespace: production
     project: default
-    syncPolicy:
-      automated: true
-      selfHeal: true
-      prune: true
 ```
 
-This creates an ArgoCD Application that syncs VMs from git only when the operator triggers it.
+This creates an ArgoCD Application with automated sync disabled. The operator manually triggers syncs after git pushes.
 
 ### Manual Sync Control
 
@@ -265,7 +261,8 @@ Key status fields:
 | `applicationName` | string | No | Application name (default: VirtGitSync name) |
 | `destinationNamespace` | string | No | Target namespace (default: VirtGitSync namespace) |
 | `project` | string | No | ArgoCD project (default: "default") |
-| `syncPolicy` | ArgoSyncPolicy | No | Automated sync settings |
+
+**Note:** The operator always disables automated sync and manually controls when ArgoCD syncs. This prevents race conditions between git pushes and ArgoCD syncs.
 
 ## Development
 

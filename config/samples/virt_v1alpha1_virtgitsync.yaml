@@ -23,12 +23,9 @@ spec:
   #     managed-by: virt-git-sync
 
   # Optional: ArgoCD Application configuration
+  # The operator controls sync lifecycle - automated sync is always disabled
   # argocd:
   #   namespace: argocd
   #   applicationName: my-vms
   #   destinationNamespace: default
   #   project: default
-  #   syncPolicy:
-  #     automated: true
-  #     selfHeal: true
-  #     prune: true

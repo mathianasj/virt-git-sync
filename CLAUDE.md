@@ -213,6 +213,7 @@ make manifests        # Generate CRD manifests
 make install          # Install CRDs to cluster
 make run             # Run operator locally
 make test            # Run all tests
+make test-auto-pause # Run auto-pause/unpause tests only
 go build ./...       # Verify compilation
 ```
 
@@ -272,6 +273,59 @@ kubectl get vm test-vm -o yaml | grep running
 
 # Resume Argo reconciliation
 kubectl annotate vm test-vm virt-git-sync/pause-argo-
+```
+
+### Testing Auto-Pause/Unpause
+
+The auto-pause/unpause functionality has comprehensive automated tests that can be run as part of CI/CD:
+
+```bash
+# Run only auto-pause/unpause tests
+make test-auto-pause
+
+# Run all tests (includes auto-pause tests)
+make test
+```
+
+**What's tested:**
+- ✅ Auto-pause when manual change detected (runStrategy, labels, etc.)
+- ✅ No auto-pause when ArgoCD makes the change (detects `kubectl.kubernetes.io/last-applied-configuration` update)
+- ✅ No auto-pause when VM already paused
+- ✅ No auto-pause when only pause annotation is removed (prevents infinite loop)
+- ✅ No auto-pause for resourceVersion-only changes
+- ✅ Detection of runStrategy changes (Halted → Always, etc.)
+- ✅ Detection of label additions/changes
+- ✅ Auto-pause for manual label changes
+- ✅ Handling of nil runStrategy values
+- ✅ Correct identification of paused VMs
+
+**CI/CD Integration:**
+
+The tests run in GitHub Actions automatically on push/PR:
+- See `.github/workflows/test.yml` for the workflow configuration
+- Tests run on every commit to main/develop branches
+- Separate job specifically for auto-pause tests
+
+**Manual testing workflow:**
+
+```bash
+# 1. Make manual change to VM
+kubectl patch vm test-vm -n vm-1 --type merge -p '{"spec":{"runStrategy":"Always"}}'
+
+# 2. Verify auto-pause annotation added
+kubectl get vm test-vm -n vm-1 -o jsonpath='{.metadata.annotations.virt-git-sync/pause-argo}'
+# Expected: "true"
+
+# 3. Wait for git sync (check logs)
+kubectl logs -n default deployment/virt-git-sync-controller-manager -f
+
+# 4. Verify auto-unpause (annotation removed after git sync)
+kubectl get vm test-vm -n vm-1 -o jsonpath='{.metadata.annotations.virt-git-sync/pause-argo}'
+# Expected: (empty - annotation removed)
+
+# 5. Verify change persists (ArgoCD doesn't revert)
+kubectl get vm test-vm -n vm-1 -o jsonpath='{.spec.runStrategy}'
+# Expected: "Always"
 ```
 
 ## Status Checking

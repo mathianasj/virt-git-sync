@@ -316,4 +316,344 @@ var _ = Describe("VirtGitSync Controller", func() {
 			}
 		})
 	})
+
+	Context("Auto-Pause/Unpause Functionality", func() {
+		var handler *VirtualMachineEventHandler
+
+		BeforeEach(func() {
+			handler = &VirtualMachineEventHandler{
+				Client: k8sClient,
+			}
+		})
+
+		It("should auto-pause when manual change is detected", func() {
+			runStrategyAlways := kubevirtv1.RunStrategyAlways
+			runStrategyHalted := kubevirtv1.RunStrategyHalted
+
+			oldVM := &kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-vm-autopause",
+					Namespace: "default",
+					Annotations: map[string]string{
+						"kubectl.kubernetes.io/last-applied-configuration": "old-config",
+					},
+				},
+				Spec: kubevirtv1.VirtualMachineSpec{
+					RunStrategy: &runStrategyHalted,
+				},
+			}
+
+			newVM := &kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-vm-autopause",
+					Namespace: "default",
+					Annotations: map[string]string{
+						"kubectl.kubernetes.io/last-applied-configuration": "old-config", // NOT updated
+					},
+				},
+				Spec: kubevirtv1.VirtualMachineSpec{
+					RunStrategy: &runStrategyAlways, // Manual change
+				},
+			}
+
+			changes := handler.detectChanges(oldVM, newVM)
+			shouldPause := handler.shouldAutoPause(oldVM, newVM, changes)
+
+			Expect(shouldPause).To(BeTrue(), "Should auto-pause for manual runStrategy change")
+		})
+
+		It("should NOT auto-pause when ArgoCD makes the change", func() {
+			runStrategyAlways := kubevirtv1.RunStrategyAlways
+			runStrategyHalted := kubevirtv1.RunStrategyHalted
+
+			oldVM := &kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-vm-argo",
+					Namespace: "default",
+					Annotations: map[string]string{
+						"kubectl.kubernetes.io/last-applied-configuration": "old-config",
+					},
+				},
+				Spec: kubevirtv1.VirtualMachineSpec{
+					RunStrategy: &runStrategyHalted,
+				},
+			}
+
+			newVM := &kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-vm-argo",
+					Namespace: "default",
+					Annotations: map[string]string{
+						"kubectl.kubernetes.io/last-applied-configuration": "new-config", // ArgoCD updated this
+					},
+				},
+				Spec: kubevirtv1.VirtualMachineSpec{
+					RunStrategy: &runStrategyAlways,
+				},
+			}
+
+			changes := handler.detectChanges(oldVM, newVM)
+			shouldPause := handler.shouldAutoPause(oldVM, newVM, changes)
+
+			Expect(shouldPause).To(BeFalse(), "Should NOT auto-pause for ArgoCD change")
+		})
+
+		It("should NOT auto-pause when VM is already paused", func() {
+			runStrategyAlways := kubevirtv1.RunStrategyAlways
+			runStrategyHalted := kubevirtv1.RunStrategyHalted
+
+			oldVM := &kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-vm-already-paused",
+					Namespace: "default",
+					Annotations: map[string]string{
+						PauseArgoAnnotation: "true",
+					},
+				},
+				Spec: kubevirtv1.VirtualMachineSpec{
+					RunStrategy: &runStrategyHalted,
+				},
+			}
+
+			newVM := &kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-vm-already-paused",
+					Namespace: "default",
+					Annotations: map[string]string{
+						PauseArgoAnnotation: "true",
+					},
+				},
+				Spec: kubevirtv1.VirtualMachineSpec{
+					RunStrategy: &runStrategyAlways,
+				},
+			}
+
+			changes := handler.detectChanges(oldVM, newVM)
+			shouldPause := handler.shouldAutoPause(oldVM, newVM, changes)
+
+			Expect(shouldPause).To(BeFalse(), "Should NOT auto-pause if already paused")
+		})
+
+		It("should NOT auto-pause when ONLY pause annotation is removed", func() {
+			runStrategyAlways := kubevirtv1.RunStrategyAlways
+
+			oldVM := &kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-vm-unpause",
+					Namespace: "default",
+					Annotations: map[string]string{
+						PauseArgoAnnotation: "true",
+					},
+				},
+				Spec: kubevirtv1.VirtualMachineSpec{
+					RunStrategy: &runStrategyAlways,
+				},
+			}
+
+			newVM := &kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "test-vm-unpause",
+					Namespace:   "default",
+					Annotations: map[string]string{
+						// pause annotation removed
+					},
+				},
+				Spec: kubevirtv1.VirtualMachineSpec{
+					RunStrategy: &runStrategyAlways, // No other changes
+				},
+			}
+
+			changes := handler.detectChanges(oldVM, newVM)
+			shouldPause := handler.shouldAutoPause(oldVM, newVM, changes)
+
+			Expect(shouldPause).To(BeFalse(), "Should NOT re-add pause when user removes it")
+		})
+
+		It("should NOT auto-pause when only resourceVersion changes", func() {
+			runStrategyAlways := kubevirtv1.RunStrategyAlways
+
+			oldVM := &kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:            "test-vm-resourceversion",
+					Namespace:       "default",
+					ResourceVersion: "12345",
+				},
+				Spec: kubevirtv1.VirtualMachineSpec{
+					RunStrategy: &runStrategyAlways,
+				},
+			}
+
+			newVM := &kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:            "test-vm-resourceversion",
+					Namespace:       "default",
+					ResourceVersion: "12346", // Only this changed
+				},
+				Spec: kubevirtv1.VirtualMachineSpec{
+					RunStrategy: &runStrategyAlways,
+				},
+			}
+
+			changes := handler.detectChanges(oldVM, newVM)
+			shouldPause := handler.shouldAutoPause(oldVM, newVM, changes)
+
+			Expect(shouldPause).To(BeFalse(), "Should NOT auto-pause for resourceVersion-only change")
+		})
+
+		It("should detect runStrategy changes", func() {
+			runStrategyAlways := kubevirtv1.RunStrategyAlways
+			runStrategyHalted := kubevirtv1.RunStrategyHalted
+
+			oldVM := &kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-vm-runstrategy",
+					Namespace: "default",
+				},
+				Spec: kubevirtv1.VirtualMachineSpec{
+					RunStrategy: &runStrategyHalted,
+				},
+			}
+
+			newVM := &kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-vm-runstrategy",
+					Namespace: "default",
+				},
+				Spec: kubevirtv1.VirtualMachineSpec{
+					RunStrategy: &runStrategyAlways,
+				},
+			}
+
+			changes := handler.detectChanges(oldVM, newVM)
+			Expect(changes).To(HaveKey("spec.runStrategy"), "Should detect runStrategy change")
+			change := changes["spec.runStrategy"].(map[string]interface{})
+			Expect(change["old"]).To(Equal(runStrategyHalted))
+			Expect(change["new"]).To(Equal(runStrategyAlways))
+		})
+
+		It("should detect label additions", func() {
+			runStrategyAlways := kubevirtv1.RunStrategyAlways
+
+			oldVM := &kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-vm-labels",
+					Namespace: "default",
+					Labels: map[string]string{
+						"app": "myapp",
+					},
+				},
+				Spec: kubevirtv1.VirtualMachineSpec{
+					RunStrategy: &runStrategyAlways,
+				},
+			}
+
+			newVM := &kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-vm-labels",
+					Namespace: "default",
+					Labels: map[string]string{
+						"app":        "myapp",
+						"new-label":  "new-value",
+						"test-label": "test-value",
+					},
+				},
+				Spec: kubevirtv1.VirtualMachineSpec{
+					RunStrategy: &runStrategyAlways,
+				},
+			}
+
+			changes := handler.detectChanges(oldVM, newVM)
+			Expect(changes).To(HaveKey("metadata.labels"), "Should detect label changes")
+		})
+
+		It("should auto-pause for label changes (manual)", func() {
+			runStrategyAlways := kubevirtv1.RunStrategyAlways
+
+			oldVM := &kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-vm-manual-label",
+					Namespace: "default",
+					Labels: map[string]string{
+						"app": "myapp",
+					},
+					Annotations: map[string]string{
+						"kubectl.kubernetes.io/last-applied-configuration": "old-config",
+					},
+				},
+				Spec: kubevirtv1.VirtualMachineSpec{
+					RunStrategy: &runStrategyAlways,
+				},
+			}
+
+			newVM := &kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-vm-manual-label",
+					Namespace: "default",
+					Labels: map[string]string{
+						"app":         "myapp",
+						"manual-edit": "true",
+					},
+					Annotations: map[string]string{
+						"kubectl.kubernetes.io/last-applied-configuration": "old-config", // NOT updated by ArgoCD
+					},
+				},
+				Spec: kubevirtv1.VirtualMachineSpec{
+					RunStrategy: &runStrategyAlways,
+				},
+			}
+
+			changes := handler.detectChanges(oldVM, newVM)
+			shouldPause := handler.shouldAutoPause(oldVM, newVM, changes)
+
+			Expect(shouldPause).To(BeTrue(), "Should auto-pause for manual label change")
+		})
+
+		It("should handle nil runStrategy", func() {
+			oldVM := &kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-vm-nil-runstrategy",
+					Namespace: "default",
+				},
+				Spec: kubevirtv1.VirtualMachineSpec{
+					RunStrategy: nil,
+				},
+			}
+
+			runStrategyAlways := kubevirtv1.RunStrategyAlways
+			newVM := &kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-vm-nil-runstrategy",
+					Namespace: "default",
+				},
+				Spec: kubevirtv1.VirtualMachineSpec{
+					RunStrategy: &runStrategyAlways,
+				},
+			}
+
+			changes := handler.detectChanges(oldVM, newVM)
+			Expect(changes).To(HaveKey("spec.runStrategy"), "Should detect nil to non-nil runStrategy change")
+		})
+
+		It("should correctly identify paused VMs", func() {
+			pausedVM := &kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "paused-vm",
+					Namespace: "default",
+					Annotations: map[string]string{
+						PauseArgoAnnotation: "true",
+					},
+				},
+			}
+
+			notPausedVM := &kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "not-paused-vm",
+					Namespace: "default",
+				},
+			}
+
+			Expect(isVMPaused(pausedVM)).To(BeTrue(), "VM with pause annotation should be paused")
+			Expect(isVMPaused(notPausedVM)).To(BeFalse(), "VM without pause annotation should not be paused")
+		})
+	})
 })

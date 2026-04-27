@@ -36,6 +36,23 @@ spec:
             type: string
           metadata:
             type: object
+          operation:
+            description: Operation contains information about a requested operation
+              on an application
+            properties:
+              sync:
+                description: Sync contains parameters for a sync operation
+                properties:
+                  prune:
+                    description: Prune specifies whether to delete resources that
+                      are no longer tracked
+                    type: boolean
+                  revision:
+                    description: Revision is the git revision to sync to (empty means
+                      HEAD)
+                    type: string
+                type: object
+            type: object
           spec:
             description: ApplicationSpec is the specification of an Application
             properties:

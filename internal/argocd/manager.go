@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -320,6 +321,9 @@ func (m *Manager) DeleteApplication(ctx context.Context, vgs *virtv1alpha1.VirtG
 
 // buildApplicationSpec creates Application spec from VirtGitSync
 func (m *Manager) buildApplicationSpec(vgs *virtv1alpha1.VirtGitSync) argocdv1alpha1.ApplicationSpec {
+	// IMPORTANT: We always disable automated sync and selfHeal
+	// Our operator controls when ArgoCD syncs by manually triggering sync operations
+	// This prevents race conditions between our git pushes and ArgoCD's automated syncs
 	// Get git repository config
 	branch := vgs.Spec.GitRepository.Branch
 	if branch == "" {
@@ -361,31 +365,11 @@ func (m *Manager) buildApplicationSpec(vgs *virtv1alpha1.VirtGitSync) argocdv1al
 		},
 	}
 
-	// Add sync policy if specified
-	if vgs.Spec.ArgoCD.SyncPolicy != nil {
-		automated := false
-		if vgs.Spec.ArgoCD.SyncPolicy.Automated != nil {
-			automated = *vgs.Spec.ArgoCD.SyncPolicy.Automated
-		}
-
-		selfHeal := false
-		if vgs.Spec.ArgoCD.SyncPolicy.SelfHeal != nil {
-			selfHeal = *vgs.Spec.ArgoCD.SyncPolicy.SelfHeal
-		}
-
-		prune := false
-		if vgs.Spec.ArgoCD.SyncPolicy.Prune != nil {
-			prune = *vgs.Spec.ArgoCD.SyncPolicy.Prune
-		}
-
-		if automated {
-			spec.SyncPolicy = &argocdv1alpha1.SyncPolicy{
-				Automated: &argocdv1alpha1.SyncPolicyAutomated{
-					Prune:    prune,
-					SelfHeal: selfHeal,
-				},
-			}
-		}
+	// ALWAYS disable automated sync - our operator will manually trigger syncs after git push
+	// This prevents race conditions and ensures manual changes in OpenShift UI persist to git
+	spec.SyncPolicy = &argocdv1alpha1.SyncPolicy{
+		// Automated: nil means no automated sync
+		// SelfHeal and Prune are irrelevant when automated sync is disabled
 	}
 
 	return spec
@@ -406,15 +390,6 @@ func (m *Manager) UpdateIgnoreDifferences(ctx context.Context, vgs *virtv1alpha1
 		argoNamespace = "argocd"
 	}
 
-	// Get Application
-	app := &argocdv1alpha1.Application{}
-	if err := m.client.Get(ctx, types.NamespacedName{
-		Name:      appName,
-		Namespace: argoNamespace,
-	}, app); err != nil {
-		return fmt.Errorf("failed to get Application: %w", err)
-	}
-
 	// Build ignoreDifferences list for paused VMs
 	var vmIgnoreDiffs []argocdv1alpha1.ResourceIgnoreDifferences
 	for _, vmName := range pausedVMs {
@@ -431,15 +406,33 @@ func (m *Manager) UpdateIgnoreDifferences(ctx context.Context, vgs *virtv1alpha1
 		})
 	}
 
-	// Merge with existing non-VM ignoreDifferences
-	newIgnoreDiffs := m.mergeIgnoreDifferences(app.Spec.IgnoreDifferences, vmIgnoreDiffs)
+	// Retry update with exponential backoff to handle conflicts with ArgoCD controller
+	retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		// Get fresh Application
+		app := &argocdv1alpha1.Application{}
+		if err := m.client.Get(ctx, types.NamespacedName{
+			Name:      appName,
+			Namespace: argoNamespace,
+		}, app); err != nil {
+			return fmt.Errorf("failed to get Application: %w", err)
+		}
 
-	// Update Application spec
-	app.Spec.IgnoreDifferences = newIgnoreDiffs
+		// Merge with existing non-VM ignoreDifferences
+		newIgnoreDiffs := m.mergeIgnoreDifferences(app.Spec.IgnoreDifferences, vmIgnoreDiffs)
 
-	// Update Application
-	if err := m.client.Update(ctx, app); err != nil {
-		return fmt.Errorf("failed to update Application: %w", err)
+		// Update Application spec
+		app.Spec.IgnoreDifferences = newIgnoreDiffs
+
+		// Update Application
+		if err := m.client.Update(ctx, app); err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	if retryErr != nil {
+		return fmt.Errorf("failed to update Application after retries: %w", retryErr)
 	}
 
 	logger.Info("Updated Application ignoreDifferences",
@@ -465,4 +458,165 @@ func (m *Manager) mergeIgnoreDifferences(existing, vmIgnores []argocdv1alpha1.Re
 
 	// Add new VM ignoreDifferences
 	return append(filtered, vmIgnores...)
+}
+
+// DisableAutomatedSync temporarily disables ArgoCD automated sync to prevent race conditions during git push
+func (m *Manager) DisableAutomatedSync(ctx context.Context, vgs *virtv1alpha1.VirtGitSync) error {
+	logger := log.FromContext(ctx)
+
+	appName := vgs.Spec.ArgoCD.ApplicationName
+	if appName == "" {
+		appName = vgs.Name
+	}
+
+	argoNamespace := vgs.Spec.ArgoCD.Namespace
+	if argoNamespace == "" {
+		argoNamespace = "argocd"
+	}
+
+	// Retry with exponential backoff to handle conflicts
+	retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		app := &argocdv1alpha1.Application{}
+		if err := m.client.Get(ctx, types.NamespacedName{
+			Name:      appName,
+			Namespace: argoNamespace,
+		}, app); err != nil {
+			return fmt.Errorf("failed to get Application: %w", err)
+		}
+
+		// Disable automated sync by setting it to nil
+		if app.Spec.SyncPolicy != nil {
+			app.Spec.SyncPolicy.Automated = nil
+		}
+
+		if err := m.client.Update(ctx, app); err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	if retryErr != nil {
+		return fmt.Errorf("failed to disable automated sync: %w", retryErr)
+	}
+
+	logger.Info("Disabled ArgoCD automated sync", "application", appName, "namespace", argoNamespace)
+	return nil
+}
+
+// EnableAutomatedSync re-enables ArgoCD automated sync after git push is complete
+func (m *Manager) EnableAutomatedSync(ctx context.Context, vgs *virtv1alpha1.VirtGitSync) error {
+	logger := log.FromContext(ctx)
+
+	appName := vgs.Spec.ArgoCD.ApplicationName
+	if appName == "" {
+		appName = vgs.Name
+	}
+
+	argoNamespace := vgs.Spec.ArgoCD.Namespace
+	if argoNamespace == "" {
+		argoNamespace = "argocd"
+	}
+
+	// Get the desired sync policy from VirtGitSync spec
+	automated := vgs.Spec.ArgoCD.SyncPolicy.Automated
+	if automated != nil && !*automated {
+		// User has disabled automated sync in VirtGitSync spec, don't re-enable
+		logger.V(1).Info("Automated sync disabled in VirtGitSync spec, not re-enabling", "application", appName)
+		return nil
+	}
+
+	// Retry with exponential backoff to handle conflicts
+	retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		app := &argocdv1alpha1.Application{}
+		if err := m.client.Get(ctx, types.NamespacedName{
+			Name:      appName,
+			Namespace: argoNamespace,
+		}, app); err != nil {
+			return fmt.Errorf("failed to get Application: %w", err)
+		}
+
+		// Re-enable automated sync
+		if app.Spec.SyncPolicy == nil {
+			app.Spec.SyncPolicy = &argocdv1alpha1.SyncPolicy{}
+		}
+
+		// Build SyncPolicyAutomated with values from VirtGitSync spec
+		prune := false
+		if vgs.Spec.ArgoCD.SyncPolicy.Prune != nil {
+			prune = *vgs.Spec.ArgoCD.SyncPolicy.Prune
+		}
+
+		selfHeal := false
+		if vgs.Spec.ArgoCD.SyncPolicy.SelfHeal != nil {
+			selfHeal = *vgs.Spec.ArgoCD.SyncPolicy.SelfHeal
+		}
+
+		app.Spec.SyncPolicy.Automated = &argocdv1alpha1.SyncPolicyAutomated{
+			Prune:    prune,
+			SelfHeal: selfHeal,
+		}
+
+		if err := m.client.Update(ctx, app); err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	if retryErr != nil {
+		return fmt.Errorf("failed to enable automated sync: %w", retryErr)
+	}
+
+	logger.Info("Re-enabled ArgoCD automated sync", "application", appName, "namespace", argoNamespace)
+	return nil
+}
+
+// TriggerSync manually triggers an ArgoCD sync operation
+// This is called after we push changes to git to apply them back to the cluster
+func (m *Manager) TriggerSync(ctx context.Context, vgs *virtv1alpha1.VirtGitSync) error {
+	logger := log.FromContext(ctx)
+
+	appName := vgs.Spec.ArgoCD.ApplicationName
+	if appName == "" {
+		appName = vgs.Name
+	}
+
+	argoNamespace := vgs.Spec.ArgoCD.Namespace
+	if argoNamespace == "" {
+		argoNamespace = "argocd"
+	}
+
+	// Retry with exponential backoff to handle conflicts
+	retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		app := &argocdv1alpha1.Application{}
+		if err := m.client.Get(ctx, types.NamespacedName{
+			Name:      appName,
+			Namespace: argoNamespace,
+		}, app); err != nil {
+			return fmt.Errorf("failed to get Application: %w", err)
+		}
+
+		// Trigger sync by setting the operation field
+		// This initiates a manual sync operation
+		app.Operation = &argocdv1alpha1.Operation{
+			Sync: &argocdv1alpha1.SyncOperation{
+				Revision: "", // Use current target revision (HEAD of branch)
+				Prune:    false,
+			},
+		}
+
+		if err := m.client.Update(ctx, app); err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	if retryErr != nil {
+		return fmt.Errorf("failed to trigger sync: %w", retryErr)
+	}
+
+	logger.Info("Triggered ArgoCD sync operation", "application", appName, "namespace", argoNamespace)
+	return nil
 }

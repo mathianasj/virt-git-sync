@@ -63,8 +63,9 @@ type Application struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   ApplicationSpec   `json:"spec"`
-	Status ApplicationStatus `json:"status,omitempty"`
+	Spec      ApplicationSpec   `json:"spec"`
+	Status    ApplicationStatus `json:"status,omitempty"`
+	Operation *Operation        `json:"operation,omitempty"`
 }
 
 // ApplicationSpec is the specification of an Application
@@ -171,6 +172,21 @@ type SyncStatus struct {
 
 	// Revision is the revision of the last sync
 	Revision string `json:"revision,omitempty"`
+}
+
+// Operation contains information about a requested operation on an application
+type Operation struct {
+	// Sync contains parameters for a sync operation
+	Sync *SyncOperation `json:"sync,omitempty"`
+}
+
+// SyncOperation contains sync operation details
+type SyncOperation struct {
+	// Revision is the git revision to sync to (empty means HEAD)
+	Revision string `json:"revision,omitempty"`
+
+	// Prune specifies whether to delete resources that are no longer tracked
+	Prune bool `json:"prune,omitempty"`
 }
 
 // +kubebuilder:object:root=true

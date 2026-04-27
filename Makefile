@@ -119,6 +119,10 @@ test: manifests generate fmt vet envtest ## Run tests.
 test-e2e:
 	go test ./test/e2e/ -v -ginkgo.v
 
+.PHONY: test-auto-pause
+test-auto-pause: envtest ## Run auto-pause/unpause functionality tests.
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./internal/controller/... -v -ginkgo.v -ginkgo.focus="Auto-Pause"
+
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
 	$(GOLANGCI_LINT) run

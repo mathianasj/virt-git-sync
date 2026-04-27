@@ -21,7 +21,6 @@ linters:
   enable:
     - dupl
     - errcheck
-    - exportloopref
     - ginkgolinter
     - goconst
     - gocyclo
@@ -40,6 +39,8 @@ linters:
     - unconvert
     - unparam
     - unused
+  disable:
+    - exportloopref  # Deprecated since Go 1.22 (loop variable scoping fixed in language)
 
 linters-settings:
   revive:

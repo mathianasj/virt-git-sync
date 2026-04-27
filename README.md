@@ -15,10 +15,22 @@ VirtGitSync enables GitOps for KubeVirt VirtualMachines by automatically pushing
 - **Change tracking**: Descriptive commit messages with VM change details
 - **Status visibility**: Git and ArgoCD status tracked in VirtGitSync CR
 
-**Architecture:**
+## Architecture
+
+```mermaid
+graph LR
+    VM[VirtualMachines] -->|watch| Operator[VirtGitSync Operator]
+    Operator -->|clean & push| Git[(Git Repository)]
+    Operator -->|create/manage| App[ArgoCD Application]
+    Git <-->|sync| ArgoCD[ArgoCD]
+    ArgoCD -->|deploy| VM
+    
+    style Operator fill:#326ce5,stroke:#fff,color:#fff
+    style Git fill:#f05032,stroke:#fff,color:#fff
+    style ArgoCD fill:#ef7b4d,stroke:#fff,color:#fff
 ```
-KubeVirt VMs → VirtGitSync Operator → Git Repository ← ArgoCD → Kubernetes Cluster
-```
+
+📊 **[Detailed Architecture Diagrams](docs/architecture.md)** - See comprehensive architecture, data flow, and reconciliation workflows.
 
 ## Quick Start
 
@@ -119,6 +131,8 @@ This creates an ArgoCD Application that automatically syncs VMs from git.
 
 ### Pause Annotation Workflow
 
+📊 **[See detailed pause workflow diagrams](docs/pause-workflow.md)** - Visual guide to pause/unpause flow and use cases
+
 When you need to make manual changes to a VM without Argo reverting them:
 
 ```bash
@@ -135,7 +149,37 @@ kubectl patch vm my-vm --type merge -p '{"spec":{"running":true}}'
 kubectl annotate vm my-vm virt-git-sync/pause-argo-
 ```
 
+**How it works:**
+```mermaid
+sequenceDiagram
+    User->>VM: Add pause annotation
+    VM->>Operator: Event
+    Operator->>ArgoCD App: Update ignoreDifferences
+    User->>VM: Make manual changes
+    Operator->>Git: Push changes
+    Note over ArgoCD: Ignores this VM
+    User->>VM: Remove pause annotation
+    Operator->>ArgoCD App: Remove from ignoreDifferences
+    Note over ArgoCD: Resumes reconciliation
+```
+
 ## How It Works
+
+```mermaid
+flowchart LR
+    A[VM Change] --> B[Watch Event]
+    B --> C[Clean YAML]
+    C --> D[Git Commit]
+    D --> E[Git Push]
+    E --> F[Update ArgoCD App]
+    F --> G[ArgoCD Syncs]
+    G --> A
+    
+    style A fill:#FFE4B5
+    style C fill:#87CEEB
+    style E fill:#f05032,color:#fff
+    style F fill:#ef7b4d,color:#fff
+```
 
 1. **VM Watch**: Operator watches VirtualMachine resources (optionally filtered by labels)
 2. **YAML Cleaning**: Strips runtime metadata to prevent drift (resourceVersion, uid, etc.)
@@ -144,6 +188,8 @@ kubectl annotate vm my-vm virt-git-sync/pause-argo-
 5. **ArgoCD Application**: Operator creates/updates Application CR
 6. **Argo Sync**: ArgoCD syncs VMs from git to cluster
 7. **Pause Handling**: Pause annotation updates Application's `ignoreDifferences`
+
+📊 **[View detailed reconciliation flow](docs/architecture.md#reconciliation-loop)**
 
 ## Git Repository Structure
 

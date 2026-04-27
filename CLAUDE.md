@@ -5,21 +5,33 @@ Kubernetes operator that watches KubeVirt VirtualMachine resources, syncs them t
 
 ## Architecture Overview
 
+```mermaid
+sequenceDiagram
+    participant User
+    participant VGS as VirtGitSync CR
+    participant Ctrl as Controller
+    participant VM as VirtualMachine
+    participant Git as Git Repository
+    participant App as ArgoCD Application
+    participant Argo as ArgoCD Controller
+    
+    User->>VGS: Create VirtGitSync CR<br/>(git repo config)
+    Ctrl->>App: Create Application<br/>(with ownerReference)
+    
+    VM->>Ctrl: VM change event
+    Ctrl->>Ctrl: Clean YAML
+    Ctrl->>Git: Commit & Push
+    Git->>Argo: ArgoCD sync
+    Argo->>VM: Deploy from git
+    
+    Note over VM,Argo: Pause Flow
+    User->>VM: Add pause annotation
+    VM->>Ctrl: Annotation event
+    Ctrl->>App: Update ignoreDifferences
+    Note over Argo: Stops reconciling VM<br/>(allows manual changes)
 ```
-VirtGitSync CR (with git repo config)
-  ↓
-Controller creates ArgoCD Application (owned via ownerReference)
-  ↓
-VM events → cleaned YAML → git commit → git push
-  ↓
-ArgoCD syncs from git to cluster
-  ↓
-User adds virt-git-sync/pause-argo="true" to VM
-  ↓
-Controller updates Application.spec.ignoreDifferences
-  ↓
-ArgoCD stops reconciling paused VM (allows manual changes)
-```
+
+📊 **See [docs/architecture.md](docs/architecture.md) for comprehensive diagrams** including detailed data flow, reconciliation loop, and YAML cleaning process.
 
 ## Current Implementation Status (v2.0)
 

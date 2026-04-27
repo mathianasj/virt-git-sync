@@ -89,7 +89,9 @@ func (m *Manager) setupAuth(secret *corev1.Secret) error {
 			}
 		} else {
 			// Skip host key validation (insecure but common)
-			publicKeys.HostKeyCallback = gossh.InsecureIgnoreHostKey()
+			// SECURITY: Using insecure host key validation - provide known_hosts in secret for strict validation
+			fmt.Fprintf(os.Stderr, "WARNING: SSH host key validation disabled for git repository %s (no known_hosts provided)\n", m.repoURL)
+			publicKeys.HostKeyCallback = gossh.InsecureIgnoreHostKey() //nolint:gosec // Audited: logged to stderr
 		}
 
 		m.auth = publicKeys
@@ -112,7 +114,7 @@ func (m *Manager) setupAuth(secret *corev1.Secret) error {
 // Clone clones the repository to workDir
 func (m *Manager) Clone(ctx context.Context) error {
 	// Create parent directory if needed
-	if err := os.MkdirAll(filepath.Dir(m.workDir), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(m.workDir), 0750); err != nil {
 		return fmt.Errorf("failed to create parent directory: %w", err)
 	}
 
@@ -199,12 +201,12 @@ func (m *Manager) WriteFile(path string, content []byte) error {
 
 	// Create parent directories if needed
 	dir := filepath.Dir(fullPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0750); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", dir, err)
 	}
 
 	// Write file
-	if err := os.WriteFile(fullPath, content, 0644); err != nil {
+	if err := os.WriteFile(fullPath, content, 0600); err != nil {
 		return fmt.Errorf("failed to write file %s: %w", path, err)
 	}
 

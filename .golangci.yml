@@ -19,28 +19,42 @@ issues:
 linters:
   disable-all: true
   enable:
+    # Code quality
     - dupl
-    - errcheck
-    - ginkgolinter
     - goconst
+    - gocritic
     - gocyclo
+    - nakedret
+    - prealloc
+    - unconvert
+    - unparam
+
+    # Bug detection
+    - errcheck
+    - gosec
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+    # Style
     - gofmt
     - goimports
     - gosimple
-    - govet
-    - ineffassign
-    - lll
     - misspell
-    - nakedret
-    - prealloc
+    - nolintlint
     - revive
-    - staticcheck
+
+    # Testing
+    - ginkgolinter
+
+    # Type checking
     - typecheck
-    - unconvert
-    - unparam
-    - unused
-  disable:
-    - exportloopref  # Deprecated since Go 1.22 (loop variable scoping fixed in language)
+
+    # Line length
+    - lll
+
+    # Note: exportloopref deprecated since Go 1.22 (loopvar built into language)
 
 linters-settings:
   revive:

@@ -11,6 +11,15 @@ Comprehensive architecture documentation including:
 - **Reconciliation Loop** - Detailed flowchart of the operator's reconciliation process
 - **YAML Cleaning Process** - How runtime metadata is stripped for zero-drift GitOps
 
+### [DR Active/Standby](dr-active-standby.md)
+Multi-cluster disaster recovery with Red Hat ACM:
+- **Architecture Overview** - Active vs standby cluster topology
+- **Normal Operation** - Single active cluster pushing to git
+- **Failover Workflow** - Step-by-step failover sequence
+- **State Transitions** - Mode switching and component states
+- **ACM Integration** - Policy enforcement and ApplicationSet patterns
+- **Health Checks** - Monitoring active and standby clusters
+
 ## Quick Reference
 
 ### Basic Flow

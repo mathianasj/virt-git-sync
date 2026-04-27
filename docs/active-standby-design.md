@@ -1,5 +1,7 @@
 # Active/Standby Deployment Mode Design
 
+📊 **[See Visual Diagrams](dr-active-standby.md)** - Comprehensive Mermaid diagrams showing architecture, workflows, and state transitions
+
 ## Problem Statement
 
 In multi-cluster DR scenarios with Red Hat ACM, VMs should only run on one cluster at a time (active), while another cluster stands ready for failover (standby). If both clusters run virt-git-sync operators that push to the same git repository, they will conflict.

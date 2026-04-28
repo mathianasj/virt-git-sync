@@ -1,3 +1,8 @@
 # CI configuration for operator catalog
 # Defines upgrade graph behavior for operator versions
 updateGraph: semver-mode
+
+# Reviewers authorized to auto-approve PRs
+# PRs authored by these GitHub usernames will auto-merge when tests pass
+reviewers:
+  - mathianasj

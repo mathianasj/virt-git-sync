@@ -295,6 +295,11 @@ bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metada
 		echo "# CI configuration for operator catalog" > bundle/metadata/ci.yaml; \
 		echo "# Defines upgrade graph behavior for operator versions" >> bundle/metadata/ci.yaml; \
 		echo "updateGraph: semver-mode" >> bundle/metadata/ci.yaml; \
+		echo "" >> bundle/metadata/ci.yaml; \
+		echo "# Reviewers authorized to auto-approve PRs" >> bundle/metadata/ci.yaml; \
+		echo "# PRs authored by these GitHub usernames will auto-merge when tests pass" >> bundle/metadata/ci.yaml; \
+		echo "reviewers:" >> bundle/metadata/ci.yaml; \
+		echo "  - mathianasj" >> bundle/metadata/ci.yaml; \
 	fi
 	$(OPERATOR_SDK) bundle validate ./bundle
 

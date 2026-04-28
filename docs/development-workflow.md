@@ -28,7 +28,7 @@ make run
 ```
 
 **Pros:** Instant iteration, no image builds  
-**Cons:** Doesn't test containerization or multi-arch
+**Cons:** Doesn't test containerization
 
 ### Option 2: Local Cluster Install (No OLM)
 
@@ -113,7 +113,7 @@ The **dev overlay** automatically sets `imagePullPolicy: Always`.
    ```
 
 3. **GitHub Actions automatically:**
-   - Builds multi-arch image (amd64 + arm64)
+   - Builds amd64 container image
    - Generates bundle with versioned image
    - Creates GitHub release with artifacts
    - Pushes bundle and catalog images
@@ -122,9 +122,9 @@ The **dev overlay** automatically sets `imagePullPolicy: Always`.
 
 The release workflow (`.github/workflows/release.yml`):
 
-1. **Builds multi-arch operator image:**
+1. **Builds amd64 operator image:**
    ```yaml
-   platforms: linux/amd64,linux/arm64
+   platforms: linux/amd64
    ```
 
 2. **Generates bundle:**

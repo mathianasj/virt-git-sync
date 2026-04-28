@@ -10,7 +10,7 @@
 - [x] ClusterServiceVersion (CSV) with proper metadata
 - [x] Container image published to public registry (quay.io/mathianasj/virt-git-sync:v0.1.0)
 - [ ] Icon updated in CSV (currently using custom SVG icon)
-- [x] Multi-arch images built (amd64, arm64)
+- [x] Container images built (amd64)
 - [x] CI tests passing on GitHub
 - [x] Documentation complete
 - [ ] GitHub Personal Access Token configured (see Setup below)
@@ -48,7 +48,7 @@ git push origin v0.2.0
 ```
 
 GitHub Actions will:
-1. ✅ Build and push multi-arch images
+1. ✅ Build and push amd64 container images
 2. ✅ Generate bundle manifests
 3. ✅ Create PR to k8s-operatorhub/community-operators (OperatorHub.io)
 4. ✅ Create PR to redhat-openshift-ecosystem/community-operators-prod (OpenShift)
@@ -179,7 +179,7 @@ Once approved and merged:
 - [ ] Published to quay.io or other public registry
 - [ ] Tagged with version (v0.1.0)
 - [ ] Image is publicly pullable (no auth required)
-- [ ] Multi-arch support recommended (amd64, arm64)
+- [ ] Built for amd64 architecture
 
 ### Documentation
 

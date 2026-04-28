@@ -9,7 +9,7 @@ When you push a version tag, three GitHub Actions workflows orchestrate the comp
 ```mermaid
 graph TD
     A[Push tag v0.2.0] --> B[Release Workflow]
-    B --> C[Build Multi-Arch Images]
+    B --> C[Build Container Image]
     B --> D[Generate Bundle]
     B --> E[Run Tests]
     B --> F[Create GitHub Release]
@@ -36,8 +36,8 @@ graph TD
 
 **Steps:**
 
-1. **Build Multi-Arch Images**
-   - Platforms: `linux/amd64`, `linux/arm64`
+1. **Build Container Image**
+   - Platform: `linux/amd64`
    - Tagged: `v0.2.0` and `latest`
    - Pushed to: `quay.io/mathianasj/virt-git-sync:v0.2.0`
 

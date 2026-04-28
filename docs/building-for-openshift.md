@@ -81,15 +81,16 @@ make docker-push IMG=quay.io/mathianasj/virt-git-sync:dev
 2. Use unique tags with timestamps (e.g., `dev-1714234567`)
 3. Manually delete cached images on cluster nodes
 
-## Multi-Architecture Builds
+## Production Builds
 
-For production releases, build for multiple architectures:
+For production releases, GitHub Actions automatically builds for amd64:
 
 ```bash
-make docker-buildx IMG=quay.io/mathianasj/virt-git-sync:v0.1.0 PLATFORMS=linux/amd64,linux/arm64
+git tag -a v0.2.0 -m "Release v0.2.0"
+git push origin v0.2.0
 ```
 
-This creates a multi-arch manifest that works on both x86_64 and ARM64 clusters.
+The release workflow builds and pushes the amd64 image to quay.io.
 
 ## Verification
 
@@ -126,9 +127,10 @@ Recommended workflow for Apple Silicon Mac → OpenShift development:
    ./test-install-dev.sh
    ```
 
-3. **Production release:** Multi-arch build
+3. **Production release:** Push version tag
    ```bash
-   make docker-buildx IMG=quay.io/mathianasj/virt-git-sync:v0.2.0
+   git tag -a v0.2.0 -m "Release v0.2.0"
+   git push origin v0.2.0
    ```
 
 ## References

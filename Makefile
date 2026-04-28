@@ -288,6 +288,9 @@ bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metada
 	$(OPERATOR_SDK) generate kustomize manifests -q
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
 	$(KUSTOMIZE) build config/manifests | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS)
+	@echo "" >> bundle/metadata/annotations.yaml
+	@echo "  # OpenShift annotations" >> bundle/metadata/annotations.yaml
+	@echo "  com.redhat.openshift.versions: v4.13-v4.20" >> bundle/metadata/annotations.yaml
 	$(OPERATOR_SDK) bundle validate ./bundle
 
 .PHONY: bundle-build

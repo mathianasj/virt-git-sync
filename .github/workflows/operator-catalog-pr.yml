@@ -63,6 +63,7 @@ jobs:
           push-to-fork: ${{ github.repository_owner }}/community-operators
           branch: add-${{ env.OPERATOR_NAME }}-${{ steps.version.outputs.VERSION }}
           commit-message: "operator ${{ env.OPERATOR_NAME }} (${{ steps.version.outputs.VERSION }})"
+          signoff: true
           title: "operator ${{ env.OPERATOR_NAME }} (${{ steps.version.outputs.VERSION }})"
           body: |
             ### New Operator Submission
@@ -95,8 +96,6 @@ jobs:
 
             ---
             *This PR was automatically created by GitHub Actions*
-          labels: |
-            new-operator
 
   submit-to-openshift-catalog:
     name: Create PR to OpenShift OperatorHub
@@ -148,6 +147,7 @@ jobs:
           push-to-fork: ${{ github.repository_owner }}/community-operators-prod
           branch: add-${{ env.OPERATOR_NAME }}-${{ steps.version.outputs.VERSION }}
           commit-message: "operator ${{ env.OPERATOR_NAME }} (${{ steps.version.outputs.VERSION }})"
+          signoff: true
           title: "operator ${{ env.OPERATOR_NAME }} (${{ steps.version.outputs.VERSION }})"
           body: |
             ### New Operator Submission
@@ -186,5 +186,3 @@ jobs:
 
             ---
             *This PR was automatically created by GitHub Actions*
-          labels: |
-            new-operator

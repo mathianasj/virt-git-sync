@@ -24,7 +24,8 @@ echo ""
 
 # Use --no-gpg-sign to skip GPG or remove this flag to enable GPG
 # The GPG password prompt will appear in a GUI dialog
-git commit -m "$COMMIT_MSG"
+# --signoff adds "Signed-off-by: <email>" (required for DCO)
+git commit --signoff -m "$COMMIT_MSG"
 
 echo ""
 echo "✓ Commit successful!"

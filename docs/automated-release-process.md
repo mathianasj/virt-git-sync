@@ -134,6 +134,23 @@ graph TD
 
 ### Creating a Release
 
+**Automated (Recommended):**
+
+```bash
+./release.sh
+```
+
+The script will:
+- ✅ Validate you're on master branch
+- ✅ Check for uncommitted changes
+- ✅ Pull latest from origin
+- ✅ Prompt for new version
+- ✅ Run tests and validate bundle
+- ✅ Create and push tag
+- ✅ Display next steps and monitoring links
+
+**Manual:**
+
 ```bash
 # Ensure you're on master with latest changes
 git checkout master

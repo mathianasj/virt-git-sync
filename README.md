@@ -275,6 +275,14 @@ VirtGitSync uses **fully automated releases**. When you push a version tag, GitH
 
 ### Creating a Release
 
+Use the automated release script:
+
+```bash
+./release.sh
+```
+
+Or manually:
+
 ```bash
 git tag v0.2.0
 git push origin v0.2.0

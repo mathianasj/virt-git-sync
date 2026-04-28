@@ -5,10 +5,10 @@ metadata:
     alm-examples: '[]'
     capabilities: Basic Install
     categories: OpenShift Optional,Integration & Delivery
+    com.redhat.openshift.versions: v4.13-v4.20
     containerImage: quay.io/mathianasj/virt-git-sync:v0.1.0
     createdAt: "2026-02-27T00:00:00Z"
     description: GitOps for KubeVirt VirtualMachines with ArgoCD integration
-    com.redhat.openshift.versions: "v4.13-v4.20"
     repository: https://github.com/mathianasj/virt-git-sync
     support: Joshua Mathianas
   name: virt-git-sync.v0.0.0

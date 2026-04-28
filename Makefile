@@ -291,6 +291,11 @@ bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metada
 	@echo "" >> bundle/metadata/annotations.yaml
 	@echo "  # OpenShift annotations" >> bundle/metadata/annotations.yaml
 	@echo "  com.redhat.openshift.versions: v4.13-v4.20" >> bundle/metadata/annotations.yaml
+	@if [ ! -f bundle/metadata/ci.yaml ]; then \
+		echo "# CI configuration for operator catalog" > bundle/metadata/ci.yaml; \
+		echo "# Defines upgrade graph behavior for operator versions" >> bundle/metadata/ci.yaml; \
+		echo "updateGraph: semver-mode" >> bundle/metadata/ci.yaml; \
+	fi
 	$(OPERATOR_SDK) bundle validate ./bundle
 
 .PHONY: bundle-build

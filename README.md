@@ -264,6 +264,28 @@ Key status fields:
 
 **Note:** The operator always disables automated sync and manually controls when ArgoCD syncs. This prevents race conditions between git pushes and ArgoCD syncs.
 
+## Release Process
+
+VirtGitSync uses **fully automated releases**. When you push a version tag, GitHub Actions:
+
+1. ✅ Builds multi-arch images (amd64 + arm64)
+2. ✅ Generates and publishes OLM bundle
+3. ✅ Creates GitHub release with artifacts
+4. ✅ **Automatically creates PRs to OperatorHub.io and OpenShift catalogs**
+
+### Creating a Release
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+Within minutes, PRs will be automatically created in:
+- [`k8s-operatorhub/community-operators`](https://github.com/k8s-operatorhub/community-operators) (OperatorHub.io)
+- [`redhat-openshift-ecosystem/community-operators-prod`](https://github.com/redhat-openshift-ecosystem/community-operators-prod) (OpenShift)
+
+**Setup required:** See [Automated Release Process](docs/automated-release-process.md) for one-time GitHub token configuration.
+
 ## Development
 
 ### Running Tests
@@ -291,6 +313,19 @@ Run the operator locally against your kubeconfig cluster:
 make install   # Install CRDs
 make run       # Run locally
 ```
+
+For testing with different architectures (e.g., building on Apple Silicon for OpenShift x86_64):
+
+```bash
+make docker-build-amd64 IMG=quay.io/mathianasj/virt-git-sync:dev
+./test-install-dev.sh   # Automated OLM installation
+```
+
+See [Development Workflow](docs/development-workflow.md) for complete guide including:
+- Local vs cluster development
+- Multi-architecture builds
+- Kustomize overlays for dev/prod
+- Testing workflows
 
 ## Troubleshooting
 

@@ -1,0 +1,190 @@
+name: Submit to Operator Catalogs
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Operator version (e.g., 0.1.0 without v prefix)'
+        required: true
+
+env:
+  OPERATOR_NAME: virt-git-sync
+
+jobs:
+  submit-to-community-operators:
+    name: Create PR to OperatorHub.io
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout virt-git-sync
+        uses: actions/checkout@v4
+        with:
+          path: virt-git-sync
+
+      - name: Extract version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "release" ]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+          else
+            VERSION=${{ github.event.inputs.version }}
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "VERSION_TAG=v$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Checkout community-operators
+        uses: actions/checkout@v4
+        with:
+          repository: k8s-operatorhub/community-operators
+          path: community-operators
+          token: ${{ secrets.OPERATOR_CATALOG_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create operator directory structure
+        run: |
+          cd community-operators
+          mkdir -p operators/${{ env.OPERATOR_NAME }}/${{ steps.version.outputs.VERSION }}
+
+          # Copy bundle contents
+          cp -r ../virt-git-sync/bundle/manifests operators/${{ env.OPERATOR_NAME }}/${{ steps.version.outputs.VERSION }}/
+          cp -r ../virt-git-sync/bundle/metadata operators/${{ env.OPERATOR_NAME }}/${{ steps.version.outputs.VERSION }}/
+          cp -r ../virt-git-sync/bundle/tests operators/${{ env.OPERATOR_NAME }}/${{ steps.version.outputs.VERSION }}/
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          path: community-operators
+          token: ${{ secrets.OPERATOR_CATALOG_TOKEN || secrets.GITHUB_TOKEN }}
+          push-to-fork: ${{ github.repository_owner }}/community-operators
+          branch: add-${{ env.OPERATOR_NAME }}-${{ steps.version.outputs.VERSION }}
+          commit-message: "operator ${{ env.OPERATOR_NAME }} (${{ steps.version.outputs.VERSION }})"
+          title: "operator ${{ env.OPERATOR_NAME }} (${{ steps.version.outputs.VERSION }})"
+          body: |
+            ### New Operator Submission
+
+            **Operator Name:** ${{ env.OPERATOR_NAME }}
+            **Version:** ${{ steps.version.outputs.VERSION }}
+            **Package:** virt.mathianasj.github.com
+
+            #### Description
+            GitOps operator for KubeVirt VirtualMachines with ArgoCD integration. Automatically syncs VirtualMachine resources to git and manages ArgoCD Applications for complete GitOps workflows.
+
+            #### Features
+            - Automatic VM sync to git
+            - Clean YAML generation (zero-drift GitOps)
+            - ArgoCD integration
+            - Multi-namespace support
+            - SSH and HTTPS authentication
+
+            #### Links
+            - Repository: https://github.com/${{ github.repository }}
+            - Release: https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.VERSION_TAG }}
+            - Container Image: quay.io/mathianasj/virt-git-sync:${{ steps.version.outputs.VERSION_TAG }}
+
+            #### Checklist
+            - [x] Bundle validated with operator-sdk
+            - [x] Container images publicly accessible
+            - [x] Multi-architecture support (amd64, arm64)
+            - [x] Runs as non-root
+            - [x] Tests passing
+
+            ---
+            *This PR was automatically created by GitHub Actions*
+          labels: |
+            new-operator
+
+  submit-to-openshift-catalog:
+    name: Create PR to OpenShift OperatorHub
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout virt-git-sync
+        uses: actions/checkout@v4
+        with:
+          path: virt-git-sync
+
+      - name: Extract version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "release" ]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+          else
+            VERSION=${{ github.event.inputs.version }}
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "VERSION_TAG=v$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Checkout community-operators-prod
+        uses: actions/checkout@v4
+        with:
+          repository: redhat-openshift-ecosystem/community-operators-prod
+          path: community-operators-prod
+          token: ${{ secrets.OPERATOR_CATALOG_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create operator directory structure
+        run: |
+          cd community-operators-prod
+          mkdir -p operators/${{ env.OPERATOR_NAME }}/${{ steps.version.outputs.VERSION }}
+
+          # Copy bundle contents
+          cp -r ../virt-git-sync/bundle/manifests operators/${{ env.OPERATOR_NAME }}/${{ steps.version.outputs.VERSION }}/
+          cp -r ../virt-git-sync/bundle/metadata operators/${{ env.OPERATOR_NAME }}/${{ steps.version.outputs.VERSION }}/
+          cp -r ../virt-git-sync/bundle/tests operators/${{ env.OPERATOR_NAME }}/${{ steps.version.outputs.VERSION }}/
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          path: community-operators-prod
+          token: ${{ secrets.OPERATOR_CATALOG_TOKEN || secrets.GITHUB_TOKEN }}
+          push-to-fork: ${{ github.repository_owner }}/community-operators-prod
+          branch: add-${{ env.OPERATOR_NAME }}-${{ steps.version.outputs.VERSION }}
+          commit-message: "operator ${{ env.OPERATOR_NAME }} (${{ steps.version.outputs.VERSION }})"
+          title: "operator ${{ env.OPERATOR_NAME }} (${{ steps.version.outputs.VERSION }})"
+          body: |
+            ### New Operator Submission
+
+            **Operator Name:** ${{ env.OPERATOR_NAME }}
+            **Version:** ${{ steps.version.outputs.VERSION }}
+            **Package:** virt.mathianasj.github.com
+
+            #### Description
+            GitOps operator for KubeVirt VirtualMachines with ArgoCD integration. Automatically syncs VirtualMachine resources to git and manages ArgoCD Applications for complete GitOps workflows.
+
+            #### Features
+            - Automatic VM sync to git
+            - Clean YAML generation (zero-drift GitOps)
+            - ArgoCD integration
+            - Multi-namespace support
+            - SSH and HTTPS authentication
+
+            #### OpenShift Compatibility
+            - Tested on OpenShift 4.13+
+            - Requires KubeVirt operator
+            - Optional ArgoCD/OpenShift GitOps integration
+
+            #### Links
+            - Repository: https://github.com/${{ github.repository }}
+            - Release: https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.VERSION_TAG }}
+            - Container Image: quay.io/mathianasj/virt-git-sync:${{ steps.version.outputs.VERSION_TAG }}
+
+            #### Checklist
+            - [x] Bundle validated with operator-sdk
+            - [x] Container images publicly accessible
+            - [x] Multi-architecture support (amd64, arm64)
+            - [x] Runs as non-root
+            - [x] Tests passing
+            - [x] Tested on OpenShift
+
+            ---
+            *This PR was automatically created by GitHub Actions*
+          labels: |
+            new-operator

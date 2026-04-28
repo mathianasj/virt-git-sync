@@ -63,6 +63,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
+          token: ${{ secrets.OPERATOR_CATALOG_TOKEN || secrets.GITHUB_TOKEN }}
           name: Release ${{ steps.version.outputs.VERSION }}
           draft: false
           prerelease: false

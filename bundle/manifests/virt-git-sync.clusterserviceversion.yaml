@@ -30,6 +30,7 @@ metadata:
     description: GitOps for KubeVirt VirtualMachines with ArgoCD integration
     operators.operatorframework.io/builder: operator-sdk-v1.39.2
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
+    com.redhat.openshift.versions: "v4.13-v4.20"
     repository: https://github.com/mathianasj/virt-git-sync
     support: Joshua Mathianas
   name: virt-git-sync.v0.1.0
@@ -295,7 +296,7 @@ spec:
   - email: mathianasj@github.com
     name: Joshua Mathianas
   maturity: alpha
-  minKubeVersion: 1.28.0
+  minKubeVersion: 1.26.0
   provider:
     name: Joshua Mathianas
   version: 0.1.0

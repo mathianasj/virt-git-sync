@@ -8,6 +8,7 @@ metadata:
     containerImage: quay.io/mathianasj/virt-git-sync:v0.1.0
     createdAt: "2026-02-27T00:00:00Z"
     description: GitOps for KubeVirt VirtualMachines with ArgoCD integration
+    com.redhat.openshift.versions: "v4.13-v4.20"
     repository: https://github.com/mathianasj/virt-git-sync
     support: Joshua Mathianas
   name: virt-git-sync.v0.0.0
@@ -100,7 +101,7 @@ spec:
   - email: mathianasj@github.com
     name: Joshua Mathianas
   maturity: alpha
-  minKubeVersion: 1.28.0
+  minKubeVersion: 1.26.0
   provider:
     name: Joshua Mathianas
   version: 0.0.0

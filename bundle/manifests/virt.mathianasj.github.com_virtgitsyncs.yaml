@@ -82,19 +82,6 @@ spec:
                       Project is the ArgoCD project name
                       Defaults to "default" if not specified
                     type: string
-                  syncPolicy:
-                    description: SyncPolicy defines the ArgoCD sync policy
-                    properties:
-                      automated:
-                        description: Automated enables automated sync
-                        type: boolean
-                      prune:
-                        description: Prune enables automated pruning
-                        type: boolean
-                      selfHeal:
-                        description: SelfHeal enables self-healing
-                        type: boolean
-                    type: object
                 type: object
               gitRepository:
                 description: GitRepository defines the git repository configuration
@@ -308,11 +295,6 @@ spec:
                   recently observed VirtGitSync
                 format: int64
                 type: integer
-              pausedVMs:
-                description: PausedVMs lists VMs currently paused from ArgoCD reconciliation
-                items:
-                  type: string
-                type: array
               phase:
                 description: Phase is the current operational phase
                 type: string

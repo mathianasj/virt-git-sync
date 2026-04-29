@@ -89,6 +89,11 @@ func (m *Manager) ReconcileApplication(ctx context.Context, vgs *virtv1alpha1.Vi
 				Labels: map[string]string{
 					ownerLabel: ownerValue,
 				},
+				// Add ArgoCD finalizer to ensure VMs are deleted when Application is deleted
+				// This prevents duplicate VMs with same MAC/IP running on multiple clusters
+				Finalizers: []string{
+					"resources-finalizer.argocd.argoproj.io",
+				},
 			},
 			Spec: m.buildApplicationSpec(vgs),
 			// Initialize status - ArgoCD CRD requires status.sync.status
@@ -124,6 +129,18 @@ func (m *Manager) ReconcileApplication(ctx context.Context, vgs *virtv1alpha1.Vi
 				app.Labels = make(map[string]string)
 			}
 			app.Labels[ownerLabel] = ownerValue
+		}
+
+		// Ensure finalizer is present (adds if missing, for existing Applications)
+		finalizerPresent := false
+		for _, f := range app.Finalizers {
+			if f == "resources-finalizer.argocd.argoproj.io" {
+				finalizerPresent = true
+				break
+			}
+		}
+		if !finalizerPresent {
+			app.Finalizers = append(app.Finalizers, "resources-finalizer.argocd.argoproj.io")
 		}
 
 		// Update spec

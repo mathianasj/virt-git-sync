@@ -133,17 +133,25 @@ Pattern: `namespace/vmname.yaml` (within syncPath)
 1. Operator **disables ArgoCD automated sync** in Application spec
 2. When VMs change, operator pushes to git
 3. After git push, operator checks if git working tree is clean
-4. If clean, operator **manually triggers** ArgoCD sync operation
+4. If clean, operator **manually triggers** ArgoCD sync operation (with `Prune: false`)
 5. ArgoCD syncs VMs from git back to cluster
 6. This prevents race conditions between git push and ArgoCD sync
 
 **Why manual sync?** Prevents ArgoCD from syncing while operator is still pushing changes, which could cause drift or conflicts.
 
-### ArgoCD Application Ownership
+**Why Prune: false?** During normal syncs, we don't want ArgoCD to delete VMs that aren't in git (allows manual VM operations). VMs are only pruned when the Application itself is deleted (via finalizer).
+
+### ArgoCD Application Ownership & Deletion
 - VirtGitSync creates Application CR with `ownerReference`
 - Application automatically deleted when VirtGitSync deleted
 - One Application per VirtGitSync instance
 - Prevents orphaned Applications
+
+**Deletion Behavior:**
+- Application has `resources-finalizer.argocd.argoproj.io` finalizer
+- When VirtGitSync is deleted, ArgoCD **deletes all VMs** before removing Application
+- This prevents duplicate VMs with same MAC/IP on multiple clusters (critical for DR scenarios)
+- VMs are **NOT orphaned** - they are pruned as part of Application deletion
 
 ## Configuration Examples
 

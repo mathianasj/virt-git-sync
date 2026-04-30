@@ -2,7 +2,12 @@
 set -e
 
 # VirtGitSync Release Script
-# Automates the complete release process including validation and tagging
+# Automates the complete release process including:
+# 1. Version validation and testing
+# 2. Updating Makefile and bundle manifests
+# 3. Committing version changes
+# 4. Creating and pushing git tag
+# 5. Triggering GitHub Actions release workflow
 
 # Colors for output
 RED='\033[0;31m'
@@ -127,6 +132,51 @@ else
 fi
 echo ""
 
+# Update version files
+print_step "Updating version files..."
+
+# Update Makefile VERSION
+sed -i.bak "s/^VERSION ?= .*/VERSION ?= $NEW_VERSION/" Makefile
+rm -f Makefile.bak
+print_success "Updated Makefile VERSION to $NEW_VERSION"
+
+# Regenerate bundle with new version
+print_step "Regenerating bundle with version $NEW_VERSION..."
+IMAGE_TAG="quay.io/mathianasj/virt-git-sync:v${NEW_VERSION}"
+if make bundle VERSION="$NEW_VERSION" IMG="$IMAGE_TAG"; then
+    print_success "Bundle regenerated with image $IMAGE_TAG"
+else
+    print_error "Bundle generation failed"
+    exit 1
+fi
+
+# Validate regenerated bundle
+print_step "Validating regenerated bundle..."
+if operator-sdk bundle validate ./bundle; then
+    print_success "Regenerated bundle validated"
+else
+    print_error "Regenerated bundle validation failed"
+    exit 1
+fi
+
+# Commit version changes
+print_step "Committing version changes..."
+git add Makefile bundle/
+COMMIT_MSG="Release $VERSION_TAG - Update bundle and manifests
+
+- Update Makefile VERSION to $NEW_VERSION
+- Regenerate bundle manifests with correct version
+- Update CSV to version $NEW_VERSION
+- Update container image tags to $VERSION_TAG"
+
+if ./git-commit.sh "$COMMIT_MSG"; then
+    print_success "Version changes committed"
+else
+    print_error "Failed to commit version changes"
+    exit 1
+fi
+echo ""
+
 # Summary
 echo "======================================"
 echo "Release Summary"
@@ -134,11 +184,17 @@ echo "======================================"
 echo "  Version:        $VERSION_TAG"
 echo "  Current branch: $CURRENT_BRANCH"
 echo "  Tests:          Passed"
-echo "  Bundle:         Validated"
+echo "  Bundle:         Updated & Committed"
+echo ""
+echo "Version changes committed:"
+echo "  ✓ Makefile VERSION updated to $NEW_VERSION"
+echo "  ✓ Bundle manifests regenerated"
+echo "  ✓ CSV version updated to $NEW_VERSION"
+echo "  ✓ Container image tags updated to $VERSION_TAG"
 echo ""
 echo "This will trigger GitHub Actions to:"
 echo "  1. Build multi-arch images (amd64, arm64)"
-echo "  2. Generate and publish OLM bundle"
+echo "  2. Build and publish OLM bundle"
 echo "  3. Create GitHub release with artifacts"
 echo "  4. Create PRs to OperatorHub.io catalog"
 echo "  5. Create PRs to OpenShift catalog"
@@ -146,8 +202,10 @@ echo ""
 echo "======================================"
 echo ""
 
-if ! confirm "Create release $VERSION_TAG?"; then
+if ! confirm "Create and push release tag $VERSION_TAG?"; then
     print_warning "Release cancelled"
+    print_warning "Note: Version changes have been committed to git"
+    print_warning "You may want to revert the commit if cancelling the release"
     exit 0
 fi
 

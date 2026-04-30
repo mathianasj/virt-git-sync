@@ -207,7 +207,7 @@ spec:
                 - --health-probe-bind-address=:8081
                 command:
                 - /manager
-                image: quay.io/mathianasj/virt-git-sync:v0.1.0
+                image: quay.io/mathianasj/virt-git-sync:v0.1.4
                 livenessProbe:
                   httpGet:
                     path: /healthz

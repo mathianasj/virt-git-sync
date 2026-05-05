@@ -299,5 +299,5 @@ spec:
   minKubeVersion: 1.26.0
   provider:
     name: Joshua Mathianas
-  replaces: virt-git-sync.v0.1.4
+  replaces: virt-git-sync.v0.1.0
   version: 0.1.4

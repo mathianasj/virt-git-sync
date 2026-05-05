@@ -52,21 +52,12 @@ jobs:
 
           # Copy bundle contents
           cp -r ../virt-git-sync/bundle/manifests operators/${{ env.OPERATOR_NAME }}/${{ steps.version.outputs.VERSION }}/
-
-          # Copy metadata but exclude ci.yaml (it goes to operator root for FBC)
-          mkdir -p operators/${{ env.OPERATOR_NAME }}/${{ steps.version.outputs.VERSION }}/metadata
-          cp ../virt-git-sync/bundle/metadata/annotations.yaml operators/${{ env.OPERATOR_NAME }}/${{ steps.version.outputs.VERSION }}/metadata/
-
+          cp -r ../virt-git-sync/bundle/metadata operators/${{ env.OPERATOR_NAME }}/${{ steps.version.outputs.VERSION }}/
           cp -r ../virt-git-sync/bundle/tests operators/${{ env.OPERATOR_NAME }}/${{ steps.version.outputs.VERSION }}/
 
-          # Copy ci.yaml to operator root only (for FBC)
+          # Copy ci.yaml to operator root (not version metadata)
           if [ -f ../virt-git-sync/bundle/metadata/ci.yaml ]; then
             cp ../virt-git-sync/bundle/metadata/ci.yaml operators/${{ env.OPERATOR_NAME }}/ci.yaml
-          fi
-
-          # Copy catalog-templates for FBC support
-          if [ -d ../virt-git-sync/catalog-templates ]; then
-            cp -r ../virt-git-sync/catalog-templates operators/${{ env.OPERATOR_NAME }}/
           fi
 
       - name: Create Pull Request
@@ -150,21 +141,12 @@ jobs:
 
           # Copy bundle contents
           cp -r ../virt-git-sync/bundle/manifests operators/${{ env.OPERATOR_NAME }}/${{ steps.version.outputs.VERSION }}/
-
-          # Copy metadata but exclude ci.yaml (it goes to operator root for FBC)
-          mkdir -p operators/${{ env.OPERATOR_NAME }}/${{ steps.version.outputs.VERSION }}/metadata
-          cp ../virt-git-sync/bundle/metadata/annotations.yaml operators/${{ env.OPERATOR_NAME }}/${{ steps.version.outputs.VERSION }}/metadata/
-
+          cp -r ../virt-git-sync/bundle/metadata operators/${{ env.OPERATOR_NAME }}/${{ steps.version.outputs.VERSION }}/
           cp -r ../virt-git-sync/bundle/tests operators/${{ env.OPERATOR_NAME }}/${{ steps.version.outputs.VERSION }}/
 
-          # Copy ci.yaml to operator root only (for FBC)
+          # Copy ci.yaml to operator root (not version metadata)
           if [ -f ../virt-git-sync/bundle/metadata/ci.yaml ]; then
             cp ../virt-git-sync/bundle/metadata/ci.yaml operators/${{ env.OPERATOR_NAME }}/ci.yaml
-          fi
-
-          # Copy catalog-templates for FBC support
-          if [ -d ../virt-git-sync/catalog-templates ]; then
-            cp -r ../virt-git-sync/catalog-templates operators/${{ env.OPERATOR_NAME }}/
           fi
 
       - name: Create Pull Request
